@@ -1,17 +1,17 @@
-from functools import partial
-from typing import Iterable, Tuple, Union
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 import math
 from einops import rearrange, reduce
-import opt_einsum as oe
 import numpy as np
 import matplotlib.pyplot as plt
 from fftconv import fft_conv_s4
 
-nextpow2 = lambda x: int(math.ceil(math.log2(x)))
+nextpow2 = lambda x: int(math.ceil(math.log2(x))) # Example: nextpow2(6) = 3 since 2^3=8 is the nearest to 6
+
+absolute_normalization = lamda x: np.abs(x / np.abs(x).max())
+
+magnitude_to_db = lamda x: 20 * np.log10(np.maximum(x, 1e-10))
 
 def general_cosine_window(n, arr):
     """
@@ -23,7 +23,7 @@ def general_cosine_window(n, arr):
     win = (a_i[:,None] * torch.cos(i[:,None] * k)).sum(0)
     return win
 
-def firwin(window_length, freq_cutoff, window_params=[0.5,0.5], fs=2):
+def firwin(window_length, freq_cutoff, window_params=[0.5,0.5], fs=2) -> Tensor:
     """
     FIR filter design using the window method.
     Ref: scipy.signal.firwin2
@@ -48,7 +48,7 @@ def firwin(window_length, freq_cutoff, window_params=[0.5,0.5], fs=2):
     out = out_full[:window_length] * window
     return out
 
-def downsample_by_n(x, filterKernel, n):
+def downsample_by_n(x, filterKernel, n) -> Tensor:
     p = n - x.shape[-1] % n
     padding = (0,p)
     x = F.pad(x, padding)
@@ -56,7 +56,7 @@ def downsample_by_n(x, filterKernel, n):
     return x
     
 def resample_wave(x, orig_freq=44500, new_freq=4450, rolloff=0.99,
-                   lowpass_filter_width=4000):
+                   lowpass_filter_width=4000) -> Tensor:
     downsample_factor = orig_freq // new_freq
     orig_freq = orig_freq // downsample_factor
     new_freq = 1
@@ -66,14 +66,14 @@ def resample_wave(x, orig_freq=44500, new_freq=4450, rolloff=0.99,
         kernelLength=lowpass_filter_width,
         transitionBandwidth=1-rolloff,
     )
-    downsample_filter = rearrange(torch.tensor(downsample_filter), 'n -> 1 1 n')
+    downsample_filter = rearrange(downsample_filter, 'n -> 1 1 n')
     x = downsample_by_n(
         x, downsample_filter, downsample_factor
     )
     return x
 
 
-def lowpass_filter(band_center=0.5, kernelLength=256, transitionBandwidth=0.03):
+def lowpass_filter(band_center=0.5, kernelLength=256, transitionBandwidth=0.03) -> Tensor:
     """
     Calculate the highest frequency we need to preserve and the lowest frequency we allow
     to pass through.
@@ -85,12 +85,14 @@ def lowpass_filter(band_center=0.5, kernelLength=256, transitionBandwidth=0.03):
     return filterKernel
 
 
-def visualize_waveform(filename="", y="", sr=sr, title="", zoom_xlim=[0.05,0.1]):
+def visualize_waveform(filename="", audio_dir="./", 
+        y="", sr=16000, title="", zoom_xlim=[0.05,0.1]):
+    import soundfile as sf
     print(title)
     if filename:
-        y, sr = sf.read(audio_dir + file_name)
+        y, sr = sf.read(audio_dir + filename)
     if not title:
-        title=filename
+        title = filename
     fig, (ax, ax2) = plt.subplots(ncols=2, figsize=(15, 3))
     ax.set(title='Full waveform: ' + title)
     ax.plot(y)
@@ -108,9 +110,9 @@ def visualize_window(window, window_name="", f_xlim=None, f_ylim=None, f_xhighli
     length = len(window)
     n_cycles = sr//length
     A = np.fft.fft(window, length*n_cycles)/ (length/2) 
-    freq = np.fft.fftfreq(len(A),d=n_cycles/length*2) 
-    response = np.abs(A / np.abs(A).max())
-    response = 20 * np.log10(np.maximum(response, 1e-10)) # to dB
+    freq = np.fft.fftfreq(len(A), d=n_cycles/length * 2) 
+    response = absolute_normalization(A)
+    response = magnitude_to_db(response, 1e-10) 
     if not f_xlim:
         f_xlim = [0,0.5]
     if not f_ylim:
