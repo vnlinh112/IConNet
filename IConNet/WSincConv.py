@@ -66,12 +66,11 @@ class WSincConv(nn.Module):
         super().__init__()
 
         self.in_channels = in_channels
+        self.kernel_size = kernel_size
 
         # Forcing the filters to be odd (i.e, perfectly symmetrics)
         if kernel_size%2==0:
-            self.kernel_size = kernel_size+1
-        else:
-            self.kernel_size = kernel_size
+            self.kernel_size += 1
 
         self.out_channels = out_channels
         self.window_func = window_func
@@ -101,13 +100,11 @@ class WSincConv(nn.Module):
         low_hz_ = torch.Tensor(hz[:-1]).repeat(in_channels, 1).view(
                                                   out_channels,in_channels,1)
         self.low_hz_ = nn.Parameter(low_hz_)
-        print(self.low_hz_.size())
 
         # filter frequency band (out_channels, in_channels)
         band_hz_ = torch.Tensor(torch.diff(hz)).repeat(in_channels, 1).view(
                                                     out_channels,in_channels,1)
         self.band_hz_ = nn.Parameter(band_hz_)
-        print(self.band_hz_.size())
 
         # window
         if self.window_func == 'hamming':
@@ -151,14 +148,12 @@ class WSincConv(nn.Module):
         high = low + self.min_band_hz /self.sample_rate + torch.abs(self.band_hz_)
 
         # (out, inp, 1) * (1, inp, ker) => (out, inp, ker)
-        f_times_t = low * self.n_
-        # (out, inp, inp) * (out, inp, ker)
-        low_pass1 = 2 * low * torch.sinc(
-            2 * f_times_t * self.sample_rate)
+        f_times_t = low * self.n_ * self.sample_rate
+        # (out, inp, inp) * (out, inp, ker) => (out, inp, ker)
+        low_pass1 = 2 * low * torch.sinc(2 * f_times_t)
         
-        f_times_t = high * self.n_
-        low_pass2 = 2 * high * torch.sinc(
-            2 * f_times_t * self.sample_rate)
+        f_times_t = high * self.n_ * self.sample_rate
+        low_pass2 = 2 * high * torch.sinc(2 * f_times_t)
 
         band_pass = low_pass2 - low_pass1
         max_, _ = torch.max(band_pass, dim=2, keepdim=True)
