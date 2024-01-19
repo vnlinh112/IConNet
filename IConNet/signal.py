@@ -34,8 +34,7 @@ def general_cosine_window(n, arr):
 def firwin(window_length, band_max, band_min=0,
            window_params=[0.5,0.5], fs=2) -> Tensor:
     """
-    FIR filter design using the window method.
-    Ref: scipy.signal.firwin2
+    FIR filter design using the window method. (Ref: scipy.signal.firwin2)
     """
     nyq = fs/2
     
@@ -43,7 +42,8 @@ def firwin(window_length, band_max, band_min=0,
 
     # Linearly interpolate the desired response on a uniform mesh `x`.
     x = torch.linspace(0.0, nyq, nfreqs)
-    fx = torch.where((x <= band_max) & (x >= band_min), 1., 0.) # np.interp(x, [0, band_min, band_max, 1], [0, 1, 1, 0])
+    # Similar to np.interp(x, [0, band_min, band_max, 1], [0, 1, 1, 0])
+    fx = torch.where((x <= band_max) & (x >= band_min), 1., 0.) 
 
     # Adjust the phases of the coefficients so that the first `ntaps` of the
     # inverse FFT are the desired filter coefficients.

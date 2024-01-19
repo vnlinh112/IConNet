@@ -55,7 +55,6 @@ dependencies:
   - openjpeg=2.4.0=h66ea3da_0
   - openssl=3.0.12=hca72f7f_0
   - pillow=10.0.1=py39h7d39338_0
-  - pip=23.2.1=py39hecd8cb5_0
   - pycparser=2.21=pyhd3eb1b0_0
   - pyopenssl=23.2.0=py39hecd8cb5_0
   - pysocks=1.7.1=py39hecd8cb5_0
@@ -92,7 +91,7 @@ dependencies:
     - bleach==6.0.0
     - certifi==2023.7.22
     - chardet==5.2.0
-    - charset-normalizer==3.3.0
+    - charset-normalizer==2.1.0
     - comm==0.1.4
     - contourpy==1.1.1
     - cycler==0.12.0
@@ -132,7 +131,7 @@ dependencies:
     - jupyter-lsp==2.2.0
     - jupyter-server==2.7.3
     - jupyter-server-terminals==0.4.4
-    - jupyterlab==4.0.6
+    - jupyterlab==4.0.10
     - jupyterlab-pygments==0.2.2
     - jupyterlab-server==2.25.0
     - jupyterlab-widgets==3.0.9
@@ -161,6 +160,7 @@ dependencies:
     - parso==0.8.3
     - pexpect==4.8.0
     - pickleshare==0.7.5
+    - pip==23.3.2
     - platformdirs==3.11.0
     - pooch==1.7.0
     - prometheus-client==0.17.1
