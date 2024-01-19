@@ -19,11 +19,11 @@ class WSincConv(nn.Module):
     kernel_size : `int`
         Filter length.
     sample_rate : `int`, optional
-        Sample rate. Defaults to 16000.
+        Sample rate. Default is 16000.
     window_func: 'learnable', 'hamming', 'hanning', 'hann' or 'none', optional
-        Window function. Defaults to 'learnable'.
+        Window function. Default is 'learnable'.
     window_k: `int`, optional
-        Number of params for the learnable window. Defaults to 3.
+        Number of params for the learnable window. Default is 3.
         https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.windows.general_cosine.html
 
     Usage

@@ -147,7 +147,7 @@ def fft_conv(
 
     return output
 
-def fft_conv_s4(u: Tensor, v: Tensor, stride: int) -> Tensor:
+def fft_conv_s4(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tensor:
     uL, vL = u.shape[-1], v.shape[-1]
     L   = uL + vL - 1
     L = L + L%2
@@ -170,9 +170,10 @@ def fft_conv_s4(u: Tensor, v: Tensor, stride: int) -> Tensor:
         down_sample_factor = stride
         p = down_sample_factor - n_fft % down_sample_factor
         y_f = F.pad(y_f, (0, p))
-        n_fft = math.ceil(n_fft/down_sample_factor)
+        n_fft_offset = math.floor(band_offset * n_fft)
+        n_fft = math.ceil(n_fft/down_sample_factor + n_fft_offset)
         L2 = math.ceil(L/down_sample_factor)
-        y_f = y_f[..., :n_fft]
+        y_f = y_f[..., n_fft_offset:n_fft]
     
     y   = torch.fft.irfft(y_f)[..., :L2] # (B C H L)
     y   = torch.fft.ifftshift(y)
