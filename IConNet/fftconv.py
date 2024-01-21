@@ -30,6 +30,66 @@ def fft_conv_simple(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tenso
     y   = rearrange(y, 'b c h l -> b h (l c)')
     return y
 
+def fft_conv_complex(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tensor:
+    L   = u.shape[-1]
+    u_f = torch.fft.fft(u, n=L) # (B H L)
+    v_f = torch.fft.fft(v, n=L) # (C H L)
+   
+    y_f = complex_matmul(u_f, v_f)
+
+    # TODO: polyphase, stride for each channel?!
+    n_fft = y_f.shape[-1]
+    if stride is not None:
+        down_sample_factor = stride
+        p = down_sample_factor - n_fft % down_sample_factor
+        y_f = F.pad(y_f, (0, p))
+        n_fft_offset = math.floor(band_offset * n_fft)
+        n_fft = math.ceil(n_fft/down_sample_factor + n_fft_offset)
+        L2 = math.ceil(L/down_sample_factor)
+        y_f = y_f[..., n_fft_offset:n_fft]
+    
+    y   = torch.fft.ifft(y_f)[..., :L2] # (B C L)
+    y   = y.float()
+    return y
+
+
+def fft_conv_complex2(u: Tensor, v: Tensor, stride: int, band_offset=0.0,
+                      band_cutoff=1.0, stretch=1) -> Tensor:
+    """
+    pad_u = len(v)
+    stride = stride - 1
+
+    TODO: band_offset and band_cutoff for each channel?!
+    """
+    uL  = u.shape[-1]
+    vL  = v.shape[-1]
+    u   = F.pad(u, (0, vL))
+    L   = uL + vL  - 1
+    u_f = torch.fft.fft(u, n=L) # (B H L)
+    v_f = torch.fft.fft(v, n=L) # (C H L)
+   
+    y_f = complex_matmul(u_f, v_f)
+
+    # TODO: polyphase, stride for each channel?!
+    n_fft = y_f.shape[-1]
+    if stride is not None:
+        down_sample_factor = stride
+        p = down_sample_factor - n_fft % down_sample_factor
+        y_f = F.pad(y_f, (0, p))
+        n_fft_offset = max(0, math.ceil(band_offset * n_fft) - 1)
+        n_fft_cutoff = math.ceil(band_cutoff * n_fft)
+        n_fft2 = math.ceil(n_fft/(down_sample_factor-1))
+        n_fft_cut = min(n_fft2 + n_fft_offset, n_fft_cutoff)
+        y_f = y_f[..., n_fft_offset:n_fft_cut]
+        if y_f.shape[-1] < n_fft2:
+            p = n_fft2 - y_f.shape[-1]
+            y_f = F.pad(y_f, (0,p))
+        uL = math.ceil(uL/down_sample_factor) - int(uL%down_sample_factor>0)    
+    
+    y   = torch.fft.ifft(y_f,n=uL*stretch)[..., :int(uL*stretch)] # (B C L)
+    y   = y.float()
+    return y
+
 
 def complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     """Multiplies two complex-valued tensors."""
@@ -38,8 +98,8 @@ def complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     # We also allow for "grouped" multiplications, where multiple sections of channels
     # are multiplied independently of one another (required for group convolutions).
 
-    a = torch.tensor(a, dtype=torch.complex64)
-    b = torch.tensor(b, dtype=torch.complex64)
+    a = a.type(torch.complex64)
+    b = b.type(torch.complex64)
 
     a = a.view(a.size(0), groups, -1, *a.shape[2:])
     b = b.view(groups, -1, *b.shape[1:])

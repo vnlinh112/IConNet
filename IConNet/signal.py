@@ -5,7 +5,7 @@ import math
 from einops import rearrange, reduce
 import numpy as np
 import matplotlib.pyplot as plt
-from .fftconv import fft_conv_simple as fft_conv
+from .fftconv import fft_conv_complex2 as fft_conv
 
 def nextpow2(x):
     """
@@ -16,11 +16,17 @@ def nextpow2(x):
     return int(math.ceil(math.log2(x)))
 
 def absolute_normalization(arr):
-    return np.abs(arr / np.abs(arr).max())
+    return torch.abs(arr / torch.abs(arr).max())
 
 def magnitude_to_db(x, eps=1e-10):
-    return 20 * np.log10(np.maximum(x, eps))
+    return 20 * torch.log10(torch.max(x, eps))
 
+def to_mel(hz):
+    return 2595 * torch.log10(1 + hz / 700)
+
+def to_hz(mel):
+    return 700 * (torch.pow(10, mel / 2595) - 1)
+    
 def general_cosine_window(n, arr):
     """
     Ref: https://github.com/pytorch/pytorch/blob/main/torch/signal/windows/windows.py#L643
@@ -31,36 +37,43 @@ def general_cosine_window(n, arr):
     win = (a_i[:,None] * torch.cos(i[:,None] * k)).sum(0)
     return win
 
+def firwin_mesh(kernel_size, fs=2):
+        """
+        Returns:
+            mesh_freq: (out_channels, in_channels, mesh_length) or (H C M).
+                A uniform mesh in the frequency-domain with length M > kernel_size.
+            shift_freq: (H C M). To adjust the phases of the coefficients so that the first
+                coefficient of the inverse FFT are the desired filter coefficients.
+        """
+        nyq = fs/2
+        nfreqs = 1 + 2 ** nextpow2(kernel_size)
+        mesh_freq = torch.linspace(0.0, nyq, nfreqs)
+        shift_freq = torch.exp(-(kernel_size - 1) / 2. * 1.j * torch.pi * mesh_freq / nyq)
+        return mesh_freq, shift_freq
+
 def firwin(window_length, band_max, band_min=0,
            window_params=[0.5,0.5], fs=2) -> Tensor:
     """
     FIR filter design using the window method. (Ref: scipy.signal.firwin2)
     """
-    nyq = fs/2
-    
-    nfreqs = 1 + 2 ** nextpow2(window_length)
+    x, shift = firwin_mesh(window_length, fs)
 
     # Linearly interpolate the desired response on a uniform mesh `x`.
-    x = torch.linspace(0.0, nyq, nfreqs)
     # Similar to np.interp(x, [0, band_min, band_max, 1], [0, 1, 1, 0])
+    # Note: torch.where, torch.logical_* ... are not supported by autograd
     fx = torch.where((x <= band_max) & (x >= band_min), 1., 0.) 
-
-    # Adjust the phases of the coefficients so that the first `ntaps` of the
-    # inverse FFT are the desired filter coefficients.
-    shift = torch.exp(-(window_length - 1) / 2. * 1.j * torch.pi * x / nyq)
     fx2 = fx * shift
-
-    # Use irfft to compute the inverse FFT.
-    out_full = torch.fft.irfft(fx2)
+    firwin_time = torch.fft.irfft(fx2)
     window = general_cosine_window(window_length, window_params)
-    out = out_full[:window_length] * window
+    out = firwin_time[:window_length] * window
     return out
 
-def downsample_by_n(x, filter, n, band_offset=0) -> Tensor:
+def downsample_by_n(x, filter, n, band_offset=0, band_cutoff=1) -> Tensor:
     p = n - x.shape[-1] % n
     padding = (0,p)
     x = F.pad(x, padding)
-    x = fft_conv(x, filter, stride=n, band_offset=band_offset)
+    x = fft_conv(x, filter, stride=n, 
+                 band_offset=band_offset, band_cutoff=band_cutoff)
     return x
     
 def downsample_wave(x, orig_freq=44500, new_freq=4450, rolloff=0.99,
@@ -76,8 +89,12 @@ def downsample_wave(x, orig_freq=44500, new_freq=4450, rolloff=0.99,
     band_min = orig_freq_min / orig_freq
     downsample_factor = orig_freq // new_freq
     band_max = 1 / downsample_factor
+    
     if orig_freq_max:
-        band_max = min(band_max, orig_freq_max / orig_freq)
+        band_cutoff = orig_freq_max / orig_freq
+        band_max = min(band_max, band_cutoff)
+    else:
+        band_cutoff = 1
     
     orig_freq = orig_freq // downsample_factor
     new_freq = 1
@@ -89,7 +106,8 @@ def downsample_wave(x, orig_freq=44500, new_freq=4450, rolloff=0.99,
         band_min=band_min
     )
     downsample_filter = rearrange(downsample_filter, 'n -> 1 1 n')
-    x = downsample_by_n(x, downsample_filter, downsample_factor, band_offset)
+    x = downsample_by_n(x, downsample_filter, downsample_factor, 
+                        band_offset, band_cutoff)
     return x
 
 
