@@ -129,8 +129,8 @@ class FIRWinFilters(nn.Module):
         W = firwin_time * W
         return W
     
-    # def right_inverse(self, W, bandwidths, lowcut_bands):
-    #     return W
+    def right_inverse(self, W, bandwidths, lowcut_bands):
+        return W
 
     
 class FIRFilter(nn.Module):

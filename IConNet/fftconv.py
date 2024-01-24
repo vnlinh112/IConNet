@@ -72,7 +72,7 @@ def fft_conv_complex2(u: Tensor, v: Tensor, stride: int, band_offset=0.0,
 
     # TODO: polyphase, stride for each channel?!
     n_fft = y_f.shape[-1]
-    if stride is not None:
+    if stride is not None and stride > 1:
         down_sample_factor = stride
         p = down_sample_factor - n_fft % down_sample_factor
         y_f = F.pad(y_f, (0, p))
