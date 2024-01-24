@@ -229,6 +229,8 @@ class Downsample(nn.Module):
         self.window_params = self.window_params.to(device)
         self.lowcut_bands = self.lowcut_bands.to(device)
         self.bandwidths = self.bandwidths.to(device)
+        self.mesh_freq = self.mesh_freq.to(device)
+        self.shift_freq = self.shift_freq.to(device)
 
         # generate general cosine window from win_params
         k = torch.linspace(0, 2*math.pi, self.kernel_size, 
