@@ -16,40 +16,52 @@ def nextpow2(x):
     return int(math.ceil(math.log2(x)))
 
 def absolute_normalization(arr):
-    return torch.abs(arr / torch.abs(arr).max())
+    if type(arr) == Tensor:
+        return torch.abs(arr / torch.abs(arr).max())
+    return np.abs(arr / np.abs(arr).max())
 
 def magnitude_to_db(x, eps=1e-10):
-    return 20 * torch.log10(torch.max(x, eps))
+    if type(x) == Tensor:
+        return 20 * torch.log10(torch.maximum(x, eps))
+    return 20 * np.log10(np.maximum(x, eps))
 
 def to_mel(hz):
-    return 2595 * torch.log10(1 + hz / 700)
+    if type(hz) == Tensor:
+        return 2595 * torch.log10(1 + hz / 700)
+    return 2595 * np.log10(1 + hz / 700)
 
 def to_hz(mel):
-    return 700 * (torch.pow(10, mel / 2595) - 1)
+    if type(mel) == Tensor:
+        return 700 * (torch.pow(10, mel / 2595) - 1)
+    return 700 * (np.power(10, mel / 2595) - 1)
     
-def general_cosine_window(n, arr):
+def general_cosine_window(n=32, arr=[.5,.5], out_type=Tensor):
     """
     Ref: https://github.com/pytorch/pytorch/blob/main/torch/signal/windows/windows.py#L643
     """
-    k = torch.linspace(0, 2*torch.pi, n)
-    a_i = torch.tensor([(-1) ** i * w for i, w in enumerate(arr)])
-    i = torch.arange(a_i.shape[0])
-    win = (a_i[:,None] * torch.cos(i[:,None] * k)).sum(0)
+    k = np.linspace(0, 2*np.pi, n)
+    a_i = np.array([(-1) ** i * w for i, w in enumerate(arr)])
+    i = np.arange(a_i.shape[0])
+    win = (a_i[:,None] * np.cos(i[:,None] * k)).sum(0)
+    if type(arr) == Tensor or out_type == Tensor:
+        win = torch.tensor(win)
     return win
 
-def firwin_mesh(kernel_size, fs=2):
-        """
-        Returns:
-            mesh_freq: (out_channels, in_channels, mesh_length) or (H C M).
-                A uniform mesh in the frequency-domain with length M > kernel_size.
-            shift_freq: (H C M). To adjust the phases of the coefficients so that the first
-                coefficient of the inverse FFT are the desired filter coefficients.
-        """
-        nyq = fs/2
-        nfreqs = 1 + 2 ** nextpow2(kernel_size)
-        mesh_freq = torch.linspace(0.0, nyq, nfreqs)
-        shift_freq = torch.exp(-(kernel_size - 1) / 2. * 1.j * torch.pi * mesh_freq / nyq)
-        return mesh_freq, shift_freq
+def firwin_mesh(kernel_size, fs=2, out_type=Tensor):
+    """
+    Returns:
+        mesh_freq: (out_channels, in_channels, mesh_length) or (H C M).
+            A uniform mesh in the frequency-domain with length M > kernel_size.
+        shift_freq: (H C M). To adjust the phases of the coefficients so that the first
+            coefficient of the inverse FFT are the desired filter coefficients.
+    """
+    nyq = fs/2
+    nfreqs = 1 + 2 ** nextpow2(kernel_size)
+    mesh_freq = np.linspace(0.0, nyq, nfreqs)
+    shift_freq = np.exp(-(kernel_size - 1) / 2. * 1.j * np.pi * mesh_freq / nyq)
+    if out_type == Tensor:
+        mesh_freq, shift_freq = torch.tensor(mesh_freq), torch.tensor(shift_freq)
+    return mesh_freq, shift_freq
 
 def firwin(window_length, band_max, band_min=0,
            window_params=[0.5,0.5], fs=2) -> Tensor:
@@ -125,6 +137,13 @@ def bandpass_filter(band_max=0.5, filter_width=256,
     return filter
 
 
+def get_window_freq_response(window, n_cycles=10):
+    length = len(window)
+    A = np.fft.fft(window, length*n_cycles)
+    response = absolute_normalization(A)
+    response = magnitude_to_db(response) 
+    return response
+
 def visualize_waveform(filename="", audio_dir="./", 
         y="", sr=16000, title="", zoom_xlim=[0.05,0.1]):
     if filename:
@@ -139,19 +158,17 @@ def visualize_waveform(filename="", audio_dir="./",
     ax2.set(title='Sample view: ' + title, xlim=np.multiply(zoom_xlim, sr))
     ax2.plot(y, marker='.')
 
-def visualize_window(window, window_name="", f_xlim=None, f_ylim=None, f_xhighlight=-90.2, sr=16000):
+def visualize_window(window, window_name="", 
+                     f_xlim=None, f_ylim=None, 
+                     f_xhighlight=-90.2, fs=2):
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(16,4))
     axes[0].plot(window)
     axes[0].set_title(f"{window_name} window")
     axes[0].set_ylabel("Amplitude")
     axes[0].set_xlabel("Sample")
 
-    length = len(window)
-    n_cycles = sr//length
-    A = np.fft.fft(window, length*n_cycles)/ (length/2) 
-    freq = np.fft.fftfreq(len(A), d=n_cycles/length * 2) 
-    response = absolute_normalization(A)
-    response = magnitude_to_db(response) 
+    response = get_window_freq_response(window)
+    freq = np.fft.fftfreq(len(response), d=1/fs) 
     if not f_xlim:
         f_xlim = [0,0.5]
     if not f_ylim:
