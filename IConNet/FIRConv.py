@@ -446,3 +446,4 @@ class Downsample2(nn.Module):
     
         # X = fft_conv(X, self.fir_filters, stride=self.stride)[..., :out_length]
         return X
+    
