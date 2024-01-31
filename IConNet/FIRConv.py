@@ -237,6 +237,7 @@ class Downsample(nn.Module):
                            requires_grad=trainable, device=device)
         i = torch.arange(self.window_k, dtype=torch.float, device=device)[..., None]
         self.window = (self.window_params[..., None] * (-1)**i * torch.cos(i * k)).sum(0).to(device)
+        # TODO: need to fftshift the window 
 
         # interpolate the desired filter coefficients in freq domain into the freq mesh
         # example: mesh [0. .25 .5 .75 1.], low1=.1 low2=.6 => [0. 1. 1. 0. 0.]
@@ -251,9 +252,11 @@ class Downsample(nn.Module):
         self.mesh2 = torch.clamp(torch.exp(-self.mesh2), min=0., max=1.) # torch.where(mesh2 <= 0., 1., 0.)
         self.x_freq = self.mesh1 * self.mesh2 #  torch.logical_and(mesh1, mesh2).float()
         self.firwin_freq = oe.contract('hcm,m->hcm', self.x_freq, self.shift_freq) 
+        # TODO: understand the effect of shift
         
         # bring the firwin to time domain & multiply with the time-domain window 
-        self.firwin_time = torch.fft.irfft(self.firwin_freq)[..., :self.kernel_size] 
+        self.firwin_time = torch.fft.irfft(self.firwin_freq, n=self.kernel_size) #[..., :self.kernel_size] 
+        self.firwin_time = torch.fft.ifftshift(self.firwin_time) # TODO: see if we need fftshift
         self.fir_filters = oe.contract('hck,hck->hck', self.fir_filters, self.firwin_time)
 
         # stride is downsampling factor 
