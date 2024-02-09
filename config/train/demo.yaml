@@ -1,0 +1,8 @@
+name: demo
+batch_size: 32
+solver: 'adam'
+learning_rate: 'adaptive'
+learning_rate_init: 0.001
+l2_reg: 0.001
+max_iter: 500
+early_stopping: True

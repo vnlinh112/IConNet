@@ -1,6 +1,7 @@
 ref/
 tmp/
 output/
+outputs/
 pretrained_models/
 models/
 lightning_logs/
