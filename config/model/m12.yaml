@@ -1,0 +1,19 @@
+name: M12
+description: gated residual FirConv
+fe:
+  n_block: 2
+  n_channel: [48, 48]
+  kernel_size: [511, 127]
+  stride: [4, 4]
+  window_k: [2, 9]
+  residual_connection_type: 'concat'
+  pooling: False
+seq:
+  n_block: 1
+  n_channel: 32
+  pooling: 'mean'
+  use_context: True 
+  bidirectional: False
+cls:
+  n_block: 2 
+  n_hidden_dim: [128, 128]

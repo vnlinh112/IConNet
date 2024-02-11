@@ -7,7 +7,7 @@ fe:
   stride: [2, 8]
   window_k: [2, 9]
   residual_connection_type: 'concat'
-  pooling: None #'mean'
+  pooling: 'max'
 cls:
   n_block: 2 
-  n_hidden_dim: [256, 256]
+  n_hidden_dim: [128, 128]
