@@ -1,6 +1,5 @@
 from typing import Literal, Optional, Union
-from einops import rearrange, reduce
-import torch.nn as nn
+from torch import nn, Tensor
 from collections import OrderedDict
 
 class Classifier(nn.Module):
@@ -17,7 +16,8 @@ class Classifier(nn.Module):
             n_output: int,
             n_block: int,
             n_hidden_dim: Optional[Union[
-                tuple[int], list[int]]] = None
+                tuple[int], list[int]]] = None,
+            norm_type: Literal['LayerNorm'] = 'LayerNorm'
             ):
         super().__init__()
         self.n_input = n_input
@@ -27,6 +27,7 @@ class Classifier(nn.Module):
         if n_hidden_dim is None:
             n_hidden_dim = [n_input // 2 for i in range(n_block)]
         self.n_hidden_dim = n_hidden_dim
+        self.norm_type = norm_type
 
         blocks = [nn.Sequential(OrderedDict({
                 "norm": nn.LayerNorm(self.n_input),
@@ -42,7 +43,7 @@ class Classifier(nn.Module):
             n_hidden_dim[-1], 
             self.n_output)
     
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         assert len(x.shape) == 2 or x.shape[1] == 1
         for block in self.blocks:
             x = block(x)

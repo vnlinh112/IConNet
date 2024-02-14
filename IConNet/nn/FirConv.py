@@ -6,6 +6,9 @@ from einops import rearrange, reduce, repeat
 import numpy as np
 from .signal import firwin_mesh, to_mel, to_hz, get_last_window_time_point, DEFAULT_SAMPLE_RATE
 from .activation import logical_switch
+from ..fftconv import fft_conv_complex as fft_conv
+from ..fftconv import expanding_fft_conv
+from .pad import pad_right
 
 class FirConvLayer(nn.Module):
     """Interface for the FIR-kernel-based convolution layer with learnable window function & transition bandwidth.
@@ -17,9 +20,13 @@ class FirConvLayer(nn.Module):
     kernel_size :   Filter length. This does not affect the number of learnable parameters.
     stride :        `int`, also downsampling factor. out_length = ceil(in_length / stride)
 
-    layer_mode :    `firwin` (default) or `sinc`.
+    conv_type :    `firwin` (default) or `sinc`.
         - `firwin`: FIR-filter-based convolution layer using windowing method. [1]
         - `sinc`:   Multi-channel Sinc-based convolution. [2]
+    conv_mode:      `conv` or `fftconv` (defautl).
+        - `conv`:   using conv1d function
+        - `fftconv`: using FFT conv (multiplication in the freq domain) with complex numbers
+    n_fft:          int, default: 2048. Used for `fftconv`. 
 
     learnable_bands: If `True` (default), each kernel will be parametrized by the 
                     `lowcut_band` and `bandwidth` parameters.
@@ -46,8 +53,9 @@ class FirConvLayer(nn.Module):
             out_channels: int, 
             kernel_size:int, 
             stride: int=1, 
-            layer_mode: Literal['firwin', 'sinc']='firwin',
-
+            conv_type: Literal['firwin', 'sinc']='firwin',
+            conv_mode: Literal['conv', 'fftconv']='fftconv',
+            n_fft: int=2048,
             learnable_bands: bool=True,
             learnable_windows: bool=True,
             shared_window: bool=False,
@@ -75,13 +83,15 @@ class FirConvLayer(nn.Module):
         self.kernel_size = kernel_size
         self.out_channels = out_channels
         self.stride = stride
-        self.layer_mode = layer_mode
+        self.conv_type = conv_type
+        self.conv_mode = conv_mode
+        self.n_fft = n_fft 
         self.padding = padding # should only right pad (0, pad)
 
         if bias:
             raise ValueError(f'FIRConv does not support bias.')
-        if groups > 1:
-            raise ValueError(f'FIRConv does not support groups.')
+        if dilation > 1:
+            raise ValueError(f'FIRConv does not support dilation.')
         
         self.bias = bias
         self.groups = groups
@@ -111,7 +121,7 @@ class FirConvLayer(nn.Module):
         self._init_mode()
 
     def _init_mode(self):
-        if self.layer_mode == 'sinc':
+        if self.conv_type == 'sinc':
             n = self.kernel_size / 2
             filter_time = repeat(
                 torch.arange(-n, n), 
@@ -277,22 +287,56 @@ class FirConvLayer(nn.Module):
             self.fir_filters).type(self.dtype)
 
     def _generate_filter(self):
-        if self.layer_mode == 'sinc':
+        if self.conv_type == 'sinc':
             self._sinc_generate_filters()
         else:
             self._firwin_generate_filters()
 
-    def _apply_filters(self, X):
-        # stride is downsampling factor 
-        # TODO: replace stride with strided conv
-        if self.layer_mode == 'firwin':
-            in_length = X.shape[-1]
-            p = self.stride - in_length % self.stride
-            X = F.pad(X, (0,p)).to(self.device)
+    def _apply_filters_conv(self, X):
         X = F.conv1d(X, self.fir_filters, 
                      stride=self.stride, 
-                     dilation=self.dilation)
+                     groups=self.groups)
         return X
+
+    def _apply_filters_fftconv(self, X):
+        n = X.shape[-1]
+        X = pad_right(X, kernel_size=self.n_fft)
+        X = rearrange(
+            fft_conv(
+                rearrange(
+                    X,
+                    'b c (n n_fft) -> (n_fft b) c n', 
+                    n_fft=self.n_fft), 
+                self.fir_filters, 
+                stride=self.stride, 
+                groups=self.groups),
+            '(n_fft b) h n -> b h (n n_fft)', 
+            n_fft=self.n_fft)
+        return X[..., :n]
+    
+    def _apply_filters_expanding_fftconv(self, X):
+        """
+        b c n, c h k -> b (c h) m, m=(n//stride + (n%stride>0))
+        """
+        n = X.shape[-1]
+        X = pad_right(X, kernel_size=self.n_fft)
+        X = rearrange(
+            expanding_fft_conv(
+                rearrange(
+                    X,
+                    'b c (n n_fft) -> (n_fft b) c n', 
+                    n_fft=self.n_fft), 
+                self.fir_filters, 
+                stride=self.stride, 
+                groups=self.groups),
+            '(n_fft b) h n -> b h (n n_fft)', 
+            n_fft=self.n_fft)
+        return X
+    
+    def _apply_filters(self, X):
+        if self.conv_mode == 'conv':
+            return self._apply_filters_conv(X)
+        return self._apply_filters_fftconv(X)
 
     def forward(self, waveforms):
         """
@@ -315,51 +359,3 @@ class FirConvLayer(nn.Module):
         waveforms = self._apply_filters(waveforms)
         return waveforms
 
-
-class GeneralCosineWindow(nn.Module):
-    """
-    Use for window parametrization.
-    Caution: There might be an issue with torch.einsum when training 
-        with multiple GPU (https://github.com/pytorch/pytorch/issues/82308)
-    """
-    def __init__(self, 
-            kernel_size, 
-            window_params=[0.5,0.5], 
-            dtype=torch.float32):
-        super().__init__()
-        assert window_params is not None 
-        self.kernel_size = kernel_size
-        self.dtype = dtype
-        self.window_params = torch.tensor(self.window_params, dtype=dtype)
-        window_params_dim = len(self.window_params.shape)
-        # window_params: (p) or (hcp)
-        assert window_params_dim == 1 or window_params_dim == 3 
-        self.windows_k = self.window_params.shape[-1]
-        self.shared_window = window_params_dim == 1
-        
-        i = torch.arange(self.window_k, dtype=self.dtype)
-        last_time_point = get_last_window_time_point(self.kernel_size)
-        A_init = torch.einsum(
-                    'p,k->pk',
-                    self.i,
-                    torch.linspace(0, last_time_point, self.kernel_size))
-        self.register_buffer('i', i)
-        self.register_buffer('A_init', A_init)
-
-    def _generate_windows(self):
-        A = reduce(
-                torch.einsum(
-                    '...p,p,pk->...pk',
-                    self.window_params,
-                    torch.cos(self.i * torch.pi), 
-                    torch.cos(self.A_init)), 
-                '... p k -> ... k', 'sum').contiguous()
-        return A
-
-    def right_verse(self, A):
-        A = self._generate_windows()
-        return A
-            
-    def forward(self, A):
-        A = self._generate_windows()
-        return A

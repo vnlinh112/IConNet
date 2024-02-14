@@ -3,9 +3,14 @@ from omegaconf import DictConfig, OmegaConf, MISSING
 from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
 
-from typing import List, Optional, Dict, Union
+from typing import Iterable, List, Optional, Dict, Union
 from enum import auto
 from strenum import StrEnum
+
+def get_optional_config_value(config_value: None):
+    if config_value is None or not config_value or config_value=='None':
+        return None
+    return config_value
 
 class SklearnSolver(StrEnum):
     lbfgs = auto()
@@ -48,7 +53,7 @@ class DatasetConfig:
     root: str = "../data/meld/"
     audio: str = "../data/meld/audio16k"
     preprocessed: str = "../data/meld/features/"
-    classnames: List[str] = field(
+    classnames: Iterable[str] = field(
         default_factory = lambda: [
             "neutral", "happy", "sad", "angry"])
     tasks = None
@@ -56,14 +61,10 @@ class DatasetConfig:
 @dataclass
 class FeBlockConfig:
     n_block: int = 2
-    n_channel: Union[
-        tuple[int], list[int]] = (128, 128)
-    kernel_size: Union[
-        tuple[int], list[int]] = (511, 127)
-    stride: Union[
-        tuple[int], list[int]] = (2, 4)
-    window_k: Union[
-        tuple[int], list[int]] = (2, 3)
+    n_channel: Iterable[int] = (128, 128)
+    kernel_size: Iterable[int] = (511, 127)
+    stride: Iterable[int] = (2, 4)
+    window_k: Iterable[int] = (2, 3)
     residual_connection_type: ResidualConnectionType = ResidualConnectionType.gated_contract
     pooling: PoolingType = PoolingType.max
 
@@ -71,8 +72,7 @@ class FeBlockConfig:
 class ClsBlockConfig:
     """automatically have 1 additional output layer"""
     n_block: int = 1
-    n_hidden_dim: Union[
-        tuple[int], list[int]] = (320)
+    n_hidden_dim: Iterable[int] = (320)
 
 @dataclass
 class ModelConfig:

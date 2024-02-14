@@ -7,16 +7,14 @@ import math
 from einops import rearrange, reduce
 import opt_einsum as oe
 import numpy as np
+from ..nn.downsample import DownsampleLayer
 
 def fft_conv_simple(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tensor:
-    uL  = u.shape[-1]
-    vL  = v.shape[-1]
-    u   = F.pad(u, (0, vL))
-    L   = uL + vL  - 1
-    u_f = torch.fft.fft(u, n=L) # (B H L)
-    v_f = torch.fft.fft(v, n=L) # (C H L)
+    L  = u.shape[-1]
+    u_f = torch.fft.fft(u, n=L) 
+    v_f = torch.fft.fft(v, n=L) 
    
-    y_f = oe.contract('bhl,chl->bchl', u_f, v_f) 
+    y_f = torch.einsum('bhl,chl->bchl', u_f, v_f) 
 
     # TODO: polyphase, stride for each channel?!
     n_fft = y_f.shape[-1]
@@ -26,33 +24,59 @@ def fft_conv_simple(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tenso
         y_f = F.pad(y_f, (0, p))
         n_fft_offset = math.floor(band_offset * n_fft)
         n_fft = math.ceil(n_fft/down_sample_factor + n_fft_offset)
-        L2 = math.ceil(L/down_sample_factor)
+        L = math.ceil(L/down_sample_factor)
         y_f = y_f[..., n_fft_offset:n_fft]
     
-    y   = torch.fft.irfft(y_f)[..., :L2] # (B C H L)
-    y   = rearrange(y, 'b c h l -> b h (l c)')
+    y   = torch.fft.irfft(y_f)[..., :L] # (B C H L)
+    y   = rearrange(y, 'b c h l -> b h (l c)') # TODO: fix this?!
+    return y
+
+def strided_fft_conv(
+        u: Tensor, v: Tensor, 
+        stride: int=1, groups: int=1,
+        dtype=torch.float32) -> Tensor:
+    """
+    Conv without stride then downsample.
+    """
+    L   = u.shape[-1]
+    u_f = torch.fft.fft(u, n=L) # (B H L)
+    v_f = torch.fft.fft(v, n=L) # (C H L)
+    y_f = complex_matmul(u_f, v_f, groups=groups)
+    y   = torch.fft.ifft(y_f,n=L) # (B C L)
+    y   = y.type(dtype)
+    if stride is not None and stride > 1:
+        y = DownsampleLayer.downsample(y, stride)
+    return y
+
+def expanding_fft_conv(
+        u: Tensor, v: Tensor, 
+        stride: int=1, groups: int=1,
+        expanding_dim: int=1, # 1: stack, -1: concat (ensure same channel)
+        dtype=torch.float32) -> Tensor:
+    """
+    Conv without stride then downsample.
+    The input is also downsampled then stack along the `expanding_dim` axis.
+    """
+    y = strided_fft_conv(u, v, stride, groups, dtype)
+    if stride is not None and stride > 1:
+        u = DownsampleLayer.downsample(u, stride)
+    y = torch.cat([y, u], dim=expanding_dim)
     return y
 
 
 def fft_conv_complex(
         u: Tensor, v: Tensor, 
-        stride: int, 
+        stride: int=1, groups: int=1,
         band_offset=0.0, band_cutoff=1.0, stretch=1,
         dtype=torch.float32) -> Tensor:
     """
-    pad_u = len(v)
-    stride = stride - 1
-
-    TODO: band_offset and band_cutoff for each channel?!
+    Recommmended to downsample after conv rather than using strided conv.
     """
-    uL  = u.shape[-1]
-    vL  = v.shape[-1]
-    u   = F.pad(u, (0, vL))
-    L   = uL + vL  - 1
+    L   = u.shape[-1]
     u_f = torch.fft.fft(u, n=L) # (B H L)
     v_f = torch.fft.fft(v, n=L) # (C H L)
    
-    y_f = complex_matmul(u_f, v_f)
+    y_f = complex_matmul(u_f, v_f, groups=groups)
 
     # TODO: polyphase, stride for each channel?!
     n_fft = y_f.shape[-1]
@@ -68,9 +92,9 @@ def fft_conv_complex(
         if y_f.shape[-1] < n_fft2:
             p = n_fft2 - y_f.shape[-1]
             y_f = F.pad(y_f, (0,p))
-        uL = math.ceil(uL/down_sample_factor) - int(uL%down_sample_factor>0)    
+        L = math.ceil(L/down_sample_factor) - int(L%down_sample_factor>0)    
     
-    y   = torch.fft.ifft(y_f,n=uL*stretch)[..., :int(uL*stretch)] # (B C L)
+    y   = torch.fft.ifft(y_f,n=L*stretch)[..., :int(L*stretch)] # (B C L)
     y   = y.type(dtype)
     return y
 
