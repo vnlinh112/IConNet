@@ -1,0 +1,25 @@
+name: M15
+description: FirConv sequential
+fe:
+  n_block: 2
+  n_channel: [64, 48]
+  kernel_size: [511, 127]
+  stride: [4, 4]
+  groups: [1, 1]
+  window_k: [2, 9]
+  residual_connection_type: 'stack'
+  conv_type: 'firwin'
+  conv_mode: 'conv'
+  norm_type: 'LocalResponseNorm'
+  pooling: False
+  n_fft: False
+seq:
+  n_block: 1
+  n_channel: 48
+  pooling: 'max'
+  use_context: True 
+  bidirectional: False
+cls:
+  n_block: 2 
+  n_hidden_dim: [128, 128]
+  norm_type: 'LayerNorm'

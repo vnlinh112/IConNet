@@ -1,0 +1,19 @@
+name: M14
+description: FirConv 
+fe:
+  n_block: 2
+  n_channel: [128, 128]
+  kernel_size: [511, 127]
+  stride: [4, 2]
+  groups: [1, 1]
+  window_k: [3, 5]
+  residual_connection_type: 'stack'
+  pooling: 'mean'
+  conv_type: 'firwin'
+  conv_mode: 'conv'
+  n_fft: False
+  norm_type: 'LocalResponseNorm'
+cls:
+  n_block: 2 
+  n_hidden_dim: [520, 520]
+  norm_type: 'LayerNorm'

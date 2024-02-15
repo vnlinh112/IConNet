@@ -38,7 +38,7 @@ class FeBlocks(nn.Module):
                 'stack', 'concat', 'add', 
                 'contract']]='contract',
             conv_type: Literal['firwin', 'sinc']='firwin',
-            conv_mode: Literal['conv', 'fftconv']='fftconv',
+            conv_mode: Literal['conv', 'fftconv']='conv',
             n_fft: Optional[int]=2048,
             norm_type: Literal[
                 'BatchNorm',

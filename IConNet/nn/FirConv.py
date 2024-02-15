@@ -54,7 +54,7 @@ class FirConvLayer(nn.Module):
             kernel_size:int, 
             stride: int=1, 
             conv_type: Literal['firwin', 'sinc']='firwin',
-            conv_mode: Literal['conv', 'fftconv']='fftconv',
+            conv_mode: Literal['conv', 'fftconv']='conv',
             n_fft: int=2048,
             learnable_bands: bool=True,
             learnable_windows: bool=True,
