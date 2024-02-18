@@ -1,13 +1,9 @@
 from typing import Iterable, Tuple, Union
-
 import torch
 import torch.nn.functional as F
-from torch import Tensor, nn
+from torch import Tensor
 import math
-from einops import rearrange, reduce
-import opt_einsum as oe
-import numpy as np
-from ..nn.downsample import DownsampleLayer
+from einops import rearrange
 
 def fft_conv_simple(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tensor:
     L  = u.shape[-1]
@@ -31,38 +27,6 @@ def fft_conv_simple(u: Tensor, v: Tensor, stride: int, band_offset=0.0) -> Tenso
     y   = rearrange(y, 'b c h l -> b h (l c)') # TODO: fix this?!
     return y
 
-def strided_fft_conv(
-        u: Tensor, v: Tensor, 
-        stride: int=1, groups: int=1,
-        dtype=torch.float32) -> Tensor:
-    """
-    Conv without stride then downsample.
-    """
-    L   = u.shape[-1]
-    u_f = torch.fft.fft(u, n=L) # (B H L)
-    v_f = torch.fft.fft(v, n=L) # (C H L)
-    y_f = complex_matmul(u_f, v_f, groups=groups)
-    y   = torch.fft.ifft(y_f,n=L) # (B C L)
-    y   = y.type(dtype)
-    if stride is not None and stride > 1:
-        y = DownsampleLayer.downsample(y, stride)
-    return y
-
-def expanding_fft_conv(
-        u: Tensor, v: Tensor, 
-        stride: int=1, groups: int=1,
-        expanding_dim: int=1, # 1: stack, -1: concat (ensure same channel)
-        dtype=torch.float32) -> Tensor:
-    """
-    Conv without stride then downsample.
-    The input is also downsampled then stack along the `expanding_dim` axis.
-    """
-    y = strided_fft_conv(u, v, stride, groups, dtype)
-    if stride is not None and stride > 1:
-        u = DownsampleLayer.downsample(u, stride)
-    y = torch.cat([y, u], dim=expanding_dim)
-    return y
-
 
 def fft_conv_complex(
         u: Tensor, v: Tensor, 
@@ -76,7 +40,7 @@ def fft_conv_complex(
     u_f = torch.fft.fft(u, n=L) # (B H L)
     v_f = torch.fft.fft(v, n=L) # (C H L)
    
-    y_f = complex_matmul(u_f, v_f, groups=groups)
+    y_f = complex_matmul(u_f, v_f)
 
     # TODO: polyphase, stride for each channel?!
     n_fft = y_f.shape[-1]
@@ -95,7 +59,7 @@ def fft_conv_complex(
         L = math.ceil(L/down_sample_factor) - int(L%down_sample_factor>0)    
     
     y   = torch.fft.ifft(y_f,n=L*stretch)[..., :int(L*stretch)] # (B C L)
-    y   = y.type(dtype)
+    y   = y.abs() #.type(dtype)
     return y
 
 

@@ -129,11 +129,9 @@ class M12(nn.Module):
             n_channel = config.fe.n_channel, 
             kernel_size = config.fe.kernel_size, 
             stride = config.fe.stride, 
-            groups = config.fe.groups,
             window_k = config.fe.window_k,
             residual_connection_type = config.fe.residual_connection_type,
             conv_mode=config.fe.conv_mode,
-            n_fft=config.fe.n_fft,
             norm_type=config.fe.norm_type,
             pooling = None) # if pooling here, n_feature=1
         self.fe_n_feature = self.fe_blocks.n_output_channel
@@ -184,16 +182,13 @@ class M13(nn.Module):
             n_channel = config.fe.n_channel, 
             kernel_size = config.fe.kernel_size, 
             stride = config.fe.stride, 
-            groups = config.fe.groups,
             window_k = config.fe.window_k,
             residual_connection_type = config.fe.residual_connection_type,
+            filter_type = config.fe.filter_type,
             conv_mode=config.fe.conv_mode,
-            n_fft=config.fe.n_fft,
             norm_type=config.fe.norm_type,
             pooling = None) # if pooling here, n_feature=1
         self.pooling = cfg.get_optional_config_value(self.config.fe.pooling)
-        # TODO: proper get set
-        self.n_fft = cfg.get_optional_config_value(self.config.fe.n_fft)
         self.n_feature = self.fe_blocks.n_output_channel
         self.cls_head = Classifier(
             n_input = self.n_feature,

@@ -1,6 +1,7 @@
 from typing import Literal, Optional, Union
 from torch import nn, Tensor
 from collections import OrderedDict
+from einops import rearrange
 
 class Classifier(nn.Module):
     """
@@ -29,19 +30,22 @@ class Classifier(nn.Module):
         self.n_hidden_dim = n_hidden_dim
         self.norm_type = norm_type
 
-        blocks = [nn.Sequential(OrderedDict({
-                "norm": nn.LayerNorm(self.n_input),
-                "layer": nn.Linear(self.n_input, n_hidden_dim[0])
-            }))]
-        blocks += [nn.Sequential(OrderedDict({
-                "norm":nn.LayerNorm(n_hidden_dim[i-1]),
-                "layer": nn.Linear(n_hidden_dim[i-1], n_hidden_dim[i])
-            })) for i in range(1, n_block)] 
+        blocks = [self._make_block(self.n_input, n_hidden_dim[0])]
+        blocks += [self._make_block(
+            n_hidden_dim[i-1], n_hidden_dim[i]) for i in range(1, n_block)] 
+        
         self.blocks = nn.ModuleList(blocks)
         self.act = nn.LeakyReLU()
         self.output_layer = nn.Linear(
             n_hidden_dim[-1], 
             self.n_output)
+        
+    def _make_block(
+            self, n_input: int, n_hidden_dim: int) -> nn.Module:
+        return nn.Sequential(OrderedDict({
+                "norm": nn.LayerNorm(n_input),
+                "layer": nn.Linear(n_input, n_hidden_dim)
+            }))
     
     def forward(self, x: Tensor) -> Tensor:
         assert len(x.shape) == 2 or x.shape[1] == 1

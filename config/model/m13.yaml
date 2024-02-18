@@ -2,16 +2,14 @@ name: M13
 description: FirConv with fftconv
 fe:
   n_block: 2
-  n_channel: [64, 64]
+  n_channel: [128, 32]
   kernel_size: [511, 127]
-  stride: [4, 4]
-  groups: [1, 1]
+  stride: [8, 2]
   window_k: [2, 9]
   residual_connection_type: 'stack'
   pooling: 'mean'
-  conv_type: 'firwin'
-  conv_mode: 'conv'
-  n_fft: False
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
   norm_type: 'LocalResponseNorm'
 cls:
   n_block: 2 

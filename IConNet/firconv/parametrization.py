@@ -6,8 +6,6 @@ from .signal import get_last_window_time_point
 class GeneralCosineWindow(nn.Module):
     """
     Use for window parametrization.
-    Caution: There might be an issue with torch.einsum when training 
-        with multiple GPU (https://github.com/pytorch/pytorch/issues/82308)
     """
     def __init__(self, 
             kernel_size, 

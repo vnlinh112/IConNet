@@ -1,4 +1,4 @@
-from ..nn.signal import general_cosine_window, get_window_freq_response
+from ..firconv.signal import general_cosine_window, get_window_freq_response
 from .visualize_signal import visualize_window
 import torch
 from typing import Literal, Optional

@@ -9,7 +9,7 @@ fe:
   window_k: [3, 5]
   residual_connection_type: 'stack'
   pooling: 'mean'
-  conv_type: 'firwin'
+  filter_type: 'firwin'
   conv_mode: 'conv'
   n_fft: False
   norm_type: 'LocalResponseNorm'

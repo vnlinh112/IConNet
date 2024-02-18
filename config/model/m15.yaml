@@ -8,7 +8,7 @@ fe:
   groups: [1, 1]
   window_k: [2, 9]
   residual_connection_type: 'stack'
-  conv_type: 'firwin'
+  filter_type: 'firwin'
   conv_mode: 'conv'
   norm_type: 'LocalResponseNorm'
   pooling: False

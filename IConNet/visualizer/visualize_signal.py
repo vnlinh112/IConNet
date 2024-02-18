@@ -1,4 +1,4 @@
-from ..nn.signal import get_window_freq_response
+from ..firconv.signal import get_window_freq_response
 import numpy as np
 from . import DEFAULT_SAMPLE_RATE
 import matplotlib.pyplot as plt
