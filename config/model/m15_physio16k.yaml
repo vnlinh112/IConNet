@@ -1,0 +1,23 @@
+name: M15_physio16k
+description: FirConv sequential for physio16k
+fe:
+  n_block: 2
+  n_channel: [64, 64]
+  kernel_size: [511, 127]
+  stride: [8, 2]
+  window_k: [2, 9]
+  residual_connection_type: 'concat'
+  pooling: False
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+seq:
+  n_block: 1
+  n_channel: 32
+  pooling: 'max'
+  use_context: True 
+  bidirectional: False
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'

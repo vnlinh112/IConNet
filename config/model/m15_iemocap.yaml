@@ -1,5 +1,5 @@
-name: M13_ravdess
-description: FirConv M13 for ravdess
+name: M15_iemocap
+description: FirConv sequential for iemocap
 fe:
   n_block: 2
   n_channel: [64, 64]
@@ -7,11 +7,17 @@ fe:
   stride: [4, 4]
   window_k: [2, 9]
   residual_connection_type: 'concat'
-  pooling: 'mean'
+  pooling: False
   filter_type: 'firwin'
   conv_mode: 'fftconv'
   norm_type: 'LocalResponseNorm'
+seq:
+  n_block: 1
+  n_channel: 32
+  pooling: 'max'
+  use_context: True 
+  bidirectional: False
 cls:
   n_block: 2 
-  n_hidden_dim: [256, 256]
+  n_hidden_dim: [128, 128]
   norm_type: 'LayerNorm'

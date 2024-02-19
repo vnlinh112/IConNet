@@ -29,8 +29,7 @@ class FeBlocks(nn.Module):
                 'stack', 'concat', 'add', 
                 'contract']]='concat',
             filter_type: Literal['firwin', 'sinc']='firwin',
-            conv_mode: Literal['conv', 'fftconv']='conv',
-            n_fft: Optional[int]=2048,
+            conv_mode: Literal['conv', 'fftconv']='fftconv',
             norm_type: Literal[
                 'BatchNorm',
                 'LayerNorm',
@@ -53,7 +52,6 @@ class FeBlocks(nn.Module):
         self.residual_connection_type = residual_connection_type
         self.filter_type = filter_type
         self.conv_mode = conv_mode
-        self.n_fft = n_fft
         self.norm_type = norm_type
         self.pooling = pooling
 
@@ -114,8 +112,7 @@ class FrontEndBlock(nn.Module):
                 'stack', 'concat', 'add', 
                 'contract']]='concat',
             filter_type: Literal['firwin', 'sinc']='firwin',
-            conv_mode: Literal['conv', 'fftconv']='conv',
-            n_fft: Optional[int]=2048,
+            conv_mode: Literal['conv', 'fftconv']='fftconv',
             norm_type: Literal[
                 'BatchNorm',
                 'LayerNorm',
@@ -134,7 +131,6 @@ class FrontEndBlock(nn.Module):
         self.residual_connection_type = residual_connection_type
         self.filter_type = filter_type
         self.conv_mode = conv_mode
-        self.n_fft = n_fft
         self.norm_type = norm_type
 
         if groups > 1 and residual_connection_type=='stack':

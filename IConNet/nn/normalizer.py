@@ -19,24 +19,31 @@ class CustomNormLayer(nn.Module):
         self.num_channels = num_channels
         self.size = n_local_size
         self.num_groups = num_groups
-        if name == 'BatchNorm':
-            self.layer = nn.BatchNorm1d(
-                num_features=num_channels)
-        elif name == 'InstanceNorm':
-            self.layer = nn.InstanceNorm1d(
-                num_features=num_channels)
-        elif name == 'GroupNorm':
-            self.layer = nn.GroupNorm(
-                num_groups=num_groups, 
-                num_channels=num_channels)
-        elif name == 'LocalResponseNorm':
-            self.layer = nn.LocalResponseNorm(
-                size=n_local_size)   
-        else: # name == 'LayerNorm':
-            self.layer = nn.GroupNorm(
-                num_groups=1, 
-                num_channels=num_channels)
+
+        if self.num_channels == 0: # for downsample module only
+            self.layer = None
+        else:
+            if name == 'BatchNorm':
+                self.layer = nn.BatchNorm1d(
+                    num_features=num_channels)
+            elif name == 'InstanceNorm':
+                self.layer = nn.InstanceNorm1d(
+                    num_features=num_channels)
+            elif name == 'GroupNorm':
+                self.layer = nn.GroupNorm(
+                    num_groups=num_groups, 
+                    num_channels=num_channels)
+            elif name == 'LocalResponseNorm':
+                self.layer = nn.LocalResponseNorm(
+                    size=n_local_size)   
+            elif name == 'LayerNorm':
+                self.layer = nn.GroupNorm(
+                    num_groups=1, 
+                    num_channels=num_channels)
+            else:
+                self.layer = None
     
     def forward(self, x: Tensor):
-        x = self.layer(x)
+        if self.layer is not None:
+            x = self.layer(x)
         return x

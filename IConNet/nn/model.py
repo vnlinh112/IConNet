@@ -131,6 +131,7 @@ class M12(nn.Module):
             stride = config.fe.stride, 
             window_k = config.fe.window_k,
             residual_connection_type = config.fe.residual_connection_type,
+            filter_type = config.fe.filter_type,
             conv_mode=config.fe.conv_mode,
             norm_type=config.fe.norm_type,
             pooling = None) # if pooling here, n_feature=1
@@ -139,7 +140,7 @@ class M12(nn.Module):
             n_block = config.seq.n_block,
             n_input_channel = self.fe_n_feature,
             n_output_channel = config.seq.n_channel,
-            pooling = config.seq.pooling,
+            pooling = cfg.get_optional_config_value(config.seq.pooling),
             use_context = config.seq.use_context,
             bidirectional = config.seq.bidirectional 
         )
