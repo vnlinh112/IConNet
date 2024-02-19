@@ -29,6 +29,15 @@ class FeBlocks(nn.Module):
                 'stack', 'concat', 'add', 
                 'contract']]='concat',
             filter_type: Literal['firwin', 'sinc']='firwin',
+            learnable_bands: bool=True,
+            learnable_windows: bool=True,
+            shared_window: bool=False,
+            filter_init: Optional[Literal[
+                'lognorm', 'mel', 'random', 
+                'none']]='mel', 
+            mel_resolution: int=4,
+            window_func: Optional[Literal['hann', 'hanning', 
+                                'hamming', 'rectangle', 'none']]=None,
             conv_mode: Literal['conv', 'fftconv']='fftconv',
             norm_type: Literal[
                 'BatchNorm',
@@ -55,6 +64,12 @@ class FeBlocks(nn.Module):
         self.norm_type = norm_type
         self.pooling = pooling
 
+        self.learnable_bands = learnable_bands
+        self.learnable_windows = learnable_windows
+        self.shared_window = shared_window
+        self.window_func = window_func
+        self.mel_resolution = mel_resolution
+
         self.in_channels = [n_input_channel] + self.n_channel[:-1]
         self.blocks = nn.ModuleList([FrontEndBlock(
                 in_channels = self.in_channels[i], 
@@ -65,7 +80,12 @@ class FeBlocks(nn.Module):
                 conv_mode = self.conv_mode,
                 norm_type = self.norm_type,
                 residual_connection_type = self.residual_connection_type,
-                filter_type = self.filter_type
+                filter_type = self.filter_type,
+                learnable_bands = self.learnable_bands,
+                learnable_windows = self.learnable_windows,
+                shared_window = self.shared_window,
+                window_func = self.window_func,
+                mel_resolution = self.mel_resolution,
             ) for i in range(self.n_block)])
         
         self.n_output_channel = self.get_output_features()
@@ -77,6 +97,7 @@ class FeBlocks(nn.Module):
         outputs = [self.blocks[i].get_output_features()
                    for i in range(self.n_block)]
         return outputs 
+    
     def get_output_features(self) -> int:
         if self.residual_connection_type == 'stack':
             return self.n_input_channel + sum(self.n_channel)
@@ -112,6 +133,15 @@ class FrontEndBlock(nn.Module):
                 'stack', 'concat', 'add', 
                 'contract']]='concat',
             filter_type: Literal['firwin', 'sinc']='firwin',
+            learnable_bands: bool=True,
+            learnable_windows: bool=True,
+            shared_window: bool=False,
+            filter_init: Optional[Literal[
+                'lognorm', 'mel', 'random', 
+                'none']]='mel', 
+            mel_resolution: int=4,
+            window_func: Optional[Literal['hann', 'hanning', 
+                                'hamming', 'rectangle', 'none']]=None,
             conv_mode: Literal['conv', 'fftconv']='fftconv',
             norm_type: Literal[
                 'BatchNorm',
@@ -132,6 +162,12 @@ class FrontEndBlock(nn.Module):
         self.filter_type = filter_type
         self.conv_mode = conv_mode
         self.norm_type = norm_type
+
+        self.learnable_bands = learnable_bands
+        self.learnable_windows = learnable_windows
+        self.shared_window = shared_window
+        self.window_func = window_func
+        self.mel_resolution = mel_resolution
 
         if groups > 1 and residual_connection_type=='stack':
             raise ValueError(f'FIRConv does not support groups \
@@ -154,7 +190,12 @@ class FrontEndBlock(nn.Module):
             kernel_size = kernel_size, 
             window_k = window_k,
             filter_type = filter_type,
-            conv_layer = conv)
+            conv_layer = conv,
+            learnable_bands = self.learnable_bands,
+            learnable_windows = self.learnable_windows,
+            shared_window = self.shared_window,
+            window_func = self.window_func,
+            mel_resolution = self.mel_resolution)
         
         self.block = nn.ModuleDict({
             "layer": layer,

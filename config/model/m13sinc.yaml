@@ -1,0 +1,22 @@
+name: M13sinc
+description: SincNet with fftconv
+fe:
+  n_block: 2
+  n_channel: [128, 32]
+  kernel_size: [511, 127]
+  stride: [8, 2]
+  window_k: [2, 9]
+  residual_connection_type: stack
+  pooling: mean
+  filter_type: sinc
+  learnable_bands: True
+  learnable_windows: False
+  shared_window: True
+  window_func: hamming
+  mel_resolution: 1
+  conv_mode: fftconv
+  norm_type: LocalResponseNorm
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'
