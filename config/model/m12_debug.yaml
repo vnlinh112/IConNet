@@ -1,23 +1,23 @@
-name: M15_iemocap
+name: M12_debug
 description: FirConv sequential for iemocap
 fe:
   n_block: 2
-  n_channel: [64, 64]
+  n_channel: [64, 32]
   kernel_size: [63, 31]
   stride: [4, 4]
-  window_k: [9, 9]
-  residual_connection_type: 'concat'
+  window_k: [5, 9]
+  residual_connection_type: 'stack'
   pooling: False
   filter_type: 'firwin'
   conv_mode: 'fftconv'
   norm_type: 'LocalResponseNorm'
 seq:
   n_block: 1
-  n_channel: 32
+  n_channel: 48
   pooling: 'max'
-  use_context: True 
+  use_context: False 
   bidirectional: False
 cls:
   n_block: 2 
-  n_hidden_dim: [128, 128]
+  n_hidden_dim: [256, 256]
   norm_type: 'LayerNorm'
