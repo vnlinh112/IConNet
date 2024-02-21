@@ -67,6 +67,8 @@ class Seq2OneBlocks(nn.Module):
         x, context = self.blocks(
             rearrange(x, 'b c n -> b n c'))
         x = reduce(x, 'b n (d h) -> b (d h)', self.pooling, d=self.D)
+        if not self.use_context:
+            return x
         hidden_state, cell_state = context
         hidden_state = rearrange(
             hidden_state, '(d l) b h -> b (l d h)', d=self.D, l=self.n_block)
