@@ -18,7 +18,8 @@ class Classifier(nn.Module):
             n_block: int,
             n_hidden_dim: Optional[Union[
                 tuple[int], list[int]]] = None,
-            norm_type: Literal['LayerNorm'] = 'LayerNorm'
+            norm_type: Literal['LayerNorm'] = 'LayerNorm',
+            dropout: Optional[float] = None
             ):
         super().__init__()
         self.n_input = n_input
@@ -39,6 +40,10 @@ class Classifier(nn.Module):
         self.output_layer = nn.Linear(
             n_hidden_dim[-1], 
             self.n_output)
+        if dropout:
+            self.dropout = nn.Dropout(dropout)
+        else:
+            self.dropout = None
         
     def _make_block(
             self, n_input: int, n_hidden_dim: int) -> nn.Module:
@@ -52,5 +57,7 @@ class Classifier(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.act(x)
+        if self.dropout:
+            x = self.dropout(x)
         x = self.output_layer(x)
         return x

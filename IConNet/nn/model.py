@@ -1,10 +1,10 @@
 from .frontend import FeBlocks
-from .sequential import Seq2SeqBlocks, Seq2OneBlocks, MambaSeq2OneBlocks
+from .sequential import (
+    Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks)
 from .classifier import Classifier
 from typing import Literal, Optional, Union
 from einops import rearrange, reduce
 import torch.nn as nn
-from .activation import NLReLU
 from ..utils import config as cfg
 
 class M10(nn.Module):
@@ -260,11 +260,12 @@ class M13sinc(nn.Module):
         else: 
             x = rearrange(x, 'b c n -> b (c n)')
         x = self.cls_head(x)
-        return x 
+        return x  
     
 
-class M17(nn.Module):
-    """A classification model using FIRConv + Mamba
+class M18(nn.Module):
+    """
+    A classification model using FIRConv + LSTM with hidden state
     """
 
     def __init__(
@@ -288,27 +289,28 @@ class M17(nn.Module):
             kernel_size = config.fe.kernel_size, 
             stride = config.fe.stride, 
             window_k = config.fe.window_k,
+            mel_resolution = config.fe.mel_resolution,
             residual_connection_type = config.fe.residual_connection_type,
             filter_type = config.fe.filter_type,
             conv_mode=config.fe.conv_mode,
             norm_type=config.fe.norm_type,
             pooling = None) 
         self.fe_n_feature = self.fe_blocks.n_output_channel
-        self.seq_blocks = MambaSeq2OneBlocks(
-            n_block=config.seq.n_block,
-            n_input_channel=self.fe_n_feature, 
-            n_output_channel=config.seq.n_channel,
-            state_expansion_factor=config.seq.d_state,  
-            kernel_size=config.seq.d_conv,    
-            block_expansion_factor=config.seq.expand,    
-            pooling=self.pooling
-        ) 
-        self.n_feature = self.seq_blocks.n_output_channel
+        self.seq_blocks = Seq2MBlocks(
+            n_block = config.seq.n_block,
+            n_input_channel = self.fe_n_feature,
+            n_output_channel = config.seq.n_channel,
+            use_context = config.seq.use_context,
+            bidirectional = config.seq.bidirectional,
+            out_seq_length = config.seq.out_seq_length 
+        )
+        self.n_feature = self.seq_blocks.n_out_feature
         self.cls_head = Classifier(
             n_input = self.n_feature,
             n_output = n_output,
             n_block = config.cls.n_block, 
-            n_hidden_dim = config.cls.n_hidden_dim
+            n_hidden_dim = config.cls.n_hidden_dim,
+            dropout = config.cls.dropout
         )
 
     def forward(self, x):
