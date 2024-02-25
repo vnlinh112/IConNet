@@ -44,6 +44,12 @@ class Classifier(nn.Module):
             self.dropout = nn.Dropout(dropout)
         else:
             self.dropout = None
+
+        self._init_weight()
+
+    def _init_weight(self):
+        for b in self.blocks:
+            nn.init.kaiming_uniform_(b.layer.weight)
         
     def _make_block(
             self, n_input: int, n_hidden_dim: int) -> nn.Module:

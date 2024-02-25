@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange, reduce
 from typing import Optional, Literal
+from ..conv.pad import PadForConv
 
 class Seq2SeqBlocks(nn.Module):
     """
@@ -57,7 +58,8 @@ class Seq2OneBlocks(nn.Module):
                 bidirectional=bidirectional)
         self.n_block = n_block
         self.D = 1 + int(bidirectional)
-        self.Cxt = 1 + int(use_context) * 2
+        # only use cell state (long term memory), not hidden state
+        self.Cxt = 1 + int(use_context) * 1
         self.bidirectional = bidirectional
         self.pooling = pooling 
         self.use_context = use_context
@@ -69,13 +71,11 @@ class Seq2OneBlocks(nn.Module):
         x = reduce(x, 'b n (d h) -> b (d h)', self.pooling, d=self.D)
         if not self.use_context:
             return x
-        hidden_state, cell_state = context
-        hidden_state = rearrange(
-            hidden_state, '(d l) b h -> b (l d h)', d=self.D, l=self.n_block)
+        _, cell_state = context
         cell_state = rearrange(
             cell_state, '(d l) b h -> b (l d h)', d=self.D, l=self.n_block
         )
-        return torch.cat([x, hidden_state, cell_state], dim=-1)
+        return torch.cat([x, cell_state], dim=-1)
     
 
 class Seq2MBlocks(nn.Module):
@@ -93,7 +93,8 @@ class Seq2MBlocks(nn.Module):
             n_output_channel: int,
             out_seq_length: int,
             bidirectional: bool = True,
-            use_context: bool = True):
+            use_context: bool = True,
+            mix_pooling: bool = False):
         super().__init__()
         self.blocks = nn.LSTM(
                 input_size=n_input_channel, 
@@ -104,30 +105,45 @@ class Seq2MBlocks(nn.Module):
         self.n_block = n_block
         self.D = 1 + int(bidirectional)
         # only use cell state (long term memory), not hidden state
-        self.Cxt = 1 + int(use_context) * 1 
+        self.Cxt = int(use_context) 
         self.bidirectional = bidirectional
         self.use_context = use_context
         self.out_seq_length = out_seq_length
-        self.n_out_feature = n_output_channel * self.D * out_seq_length
+        self.pooling_fn_list = ['max', 'min', 'mean', torch.var]
+        self.n_chunk = self.out_seq_length - self.n_block * self.Cxt 
+        self.pad_layer = PadForConv(
+                    kernel_size=self.n_chunk,
+                    pad_mode='mean')
+        p = len(self.pooling_fn_list)
+        h = n_output_channel * self.D
+        m = self.n_chunk * p + self.Cxt
+        self.n_out_feature = h * m
+        
     
     def forward(self, x):
         x, context = self.blocks(
             rearrange(x, 'b c n -> b n c'))
-        m = self.out_seq_length
-        m_l = m - self.n_block
-        x = rearrange(x[:, -m_l:, :], 
-                      'b ml (d h) -> b ml (d h)', 
-                      d=self.D) 
-
+        x = self.pad_layer(
+            rearrange(x, 'b n dh -> b dh n'))
+        y = []
+        for pooling_fn in self.pooling_fn_list:
+            y += [reduce(x, 'b dh (m t) -> b dh m', pooling_fn, 
+                        m=self.n_chunk)]
+        y = rearrange(torch.cat(y, dim=-1),
+                      'b dh pm -> b pm dh')
+        # print(y.shape)
         if not self.use_context:
-            return x
-        _, cell_state = context
-        cell_state = rearrange(cell_state, 
+            return rearrange(y, 'b m dh -> b (dh m)')
+        _, c = context
+        c = rearrange(c, 
             '(d l) b h -> b l (d h)', 
             d=self.D, l=self.n_block
         )
-        x = rearrange(
-            torch.cat([x, cell_state], dim=1),
-            'b m dh -> b (m dh)', m=m)
-        return x
+        # print(c.shape)
+        y = torch.cat([y, c], dim=1)
+        # print(y.shape)
+        y = rearrange(
+            y,
+            'b m dh -> b (dh m)')
+        return y
     

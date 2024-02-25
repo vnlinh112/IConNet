@@ -123,18 +123,33 @@ class M12(nn.Module):
             n_output = config.n_output
         self.n_input = n_input 
         self.n_output = n_output
-        self.fe_blocks = FeBlocks(
-            n_input_channel = n_input, 
-            n_block = config.fe.n_block,
-            n_channel = config.fe.n_channel, 
-            kernel_size = config.fe.kernel_size, 
-            stride = config.fe.stride, 
-            window_k = config.fe.window_k,
-            residual_connection_type = config.fe.residual_connection_type,
-            filter_type = config.fe.filter_type,
-            conv_mode=config.fe.conv_mode,
-            norm_type=config.fe.norm_type,
-            pooling = None) # if pooling here, n_feature=1
+        if 'mel_resolution' in config.fe.keys():
+            self.fe_blocks = FeBlocks(
+                n_input_channel = n_input, 
+                n_block = config.fe.n_block,
+                n_channel = config.fe.n_channel, 
+                kernel_size = config.fe.kernel_size, 
+                stride = config.fe.stride, 
+                window_k = config.fe.window_k,
+                mel_resolution = config.fe.mel_resolution,
+                residual_connection_type = config.fe.residual_connection_type,
+                filter_type = config.fe.filter_type,
+                conv_mode=config.fe.conv_mode,
+                norm_type=config.fe.norm_type,
+                pooling = None) # if pooling here, n_feature=1
+        else:
+            self.fe_blocks = FeBlocks(
+                n_input_channel = n_input, 
+                n_block = config.fe.n_block,
+                n_channel = config.fe.n_channel, 
+                kernel_size = config.fe.kernel_size, 
+                stride = config.fe.stride, 
+                window_k = config.fe.window_k,
+                residual_connection_type = config.fe.residual_connection_type,
+                filter_type = config.fe.filter_type,
+                conv_mode=config.fe.conv_mode,
+                norm_type=config.fe.norm_type,
+                pooling = None) # if pooling here, n_feature=1
         self.fe_n_feature = self.fe_blocks.n_output_channel
         self.seq_blocks = Seq2OneBlocks(
             n_block = config.seq.n_block,
@@ -318,3 +333,9 @@ class M18(nn.Module):
         x = self.seq_blocks(x)
         x = self.cls_head(x)
         return x 
+    
+    def extract_embedding(self, x):
+        x = self.fe_blocks(x)
+        x = self.seq_blocks(x)
+        logits = self.cls_head.blocks[0](x)
+        return logits
