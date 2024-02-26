@@ -1,0 +1,5 @@
+defaults:
+  - dataset: ravdess
+  - model: m9
+  - optional dataset_model: ${dataset}_${model}
+  - train: demo

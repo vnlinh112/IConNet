@@ -1,0 +1,17 @@
+name: M13_trill
+description: FirConv M13 for trill
+fe:
+  n_block: 2
+  n_channel: [128, 32]
+  kernel_size: [15, 15]
+  stride: [2, 1]
+  window_k: [2, 9]
+  residual_connection_type: 'stack'
+  pooling: 'max'
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+cls:
+  n_block: 2 
+  n_hidden_dim: [128, 128]
+  norm_type: 'LayerNorm'

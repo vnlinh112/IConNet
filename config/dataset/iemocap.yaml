@@ -1,0 +1,11 @@
+name: iemocap
+config_type: dataset
+root: ../data/iemocap/
+preprocessed: ../data/iemocap/features/
+classnames: [neu, hap, sad, ang]
+tasks:
+  4_emotions:
+    labels: [0, 1, 2, 3]
+    classnames: [neu, hap, sad, ang]
+    colors: [gray, green, blue, red]
+    markers: [o, ^, s, s]

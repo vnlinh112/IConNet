@@ -1,0 +1,25 @@
+name: M18
+description: FirConv sequential for speech emotion
+fe:
+  n_block: 1
+  n_channel: [512]
+  kernel_size: [127]
+  stride: [16]
+  window_k: [9] 
+  mel_resolution: 4
+  residual_connection_type: 'concat'
+  pooling: False
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+seq:
+  n_block: 1
+  n_channel: 48
+  out_seq_length: 16
+  use_context: False 
+  bidirectional: False
+cls:
+  n_block: 2 
+  n_hidden_dim: [128, 128]
+  norm_type: 'LayerNorm'
+  dropout: 0.05

@@ -1,0 +1,13 @@
+name: M11
+description: gated residual FirConv with LSTM
+fe:
+  n_block: 2
+  n_channel: [64, 64]
+  kernel_size: [511, 127]
+  stride: [2, 8]
+  window_k: [2, 9]
+  residual_connection_type: 'concat'
+  pooling: 'max'
+cls:
+  n_block: 2 
+  n_hidden_dim: [128, 128]
