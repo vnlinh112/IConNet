@@ -67,3 +67,15 @@ class Classifier(nn.Module):
             x = self.dropout(x)
         x = self.output_layer(x)
         return x
+    
+class FeedForward(nn.Module):
+    def __init__(self, d_model, dropout=0.15) -> None:
+        super().__init__()
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model),
+            nn.Dropout(dropout))
+    
+    def forward(self, x):
+        return self.ffn(x)

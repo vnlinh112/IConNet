@@ -1,8 +1,9 @@
 from .frontend import FeBlocks
 from .sequential import (
     Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks)
-from .classifier import Classifier
+from .classifier import Classifier, FeedForward
 from typing import Literal, Optional, Union
+from collections import OrderedDict
 from einops import rearrange, reduce
 import torch.nn as nn
 from ..utils import config as cfg
@@ -336,6 +337,55 @@ class M18(nn.Module):
     
     def extract_embedding(self, x):
         x = self.fe_blocks(x)
+        x = self.seq_blocks(x)
+        logits = self.cls_head.blocks[0](x)
+        return logits
+    
+class M18mfcc(nn.Module):
+    """
+    A classification model using MFCC + FFN + LSTM with hidden state
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+
+        
+        self.fe_n_feature = self.n_input
+        self.seq_blocks = Seq2MBlocks(
+            n_block = config.seq.n_block,
+            n_input_channel = self.fe_n_feature,
+            n_output_channel = config.seq.n_channel,
+            use_context = config.seq.use_context,
+            bidirectional = config.seq.bidirectional,
+            out_seq_length = config.seq.out_seq_length 
+        )
+        self.n_feature = self.seq_blocks.n_out_feature
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            dropout = config.cls.dropout
+        )
+
+    def forward(self, x):
+        x = self.seq_blocks(x)
+        x = self.cls_head(x)
+        return x 
+    
+    def extract_embedding(self, x):
         x = self.seq_blocks(x)
         logits = self.cls_head.blocks[0](x)
         return logits
