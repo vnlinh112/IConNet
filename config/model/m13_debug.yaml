@@ -1,0 +1,17 @@
+name: M13
+description: FirConv with fftconv
+fe:
+  n_block: 2
+  n_channel: [64, 64]
+  kernel_size: [511, 127]
+  stride: [4, 2]
+  window_k: [2, 9]
+  residual_connection_type: 'concat'
+  pooling: 'max'
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'

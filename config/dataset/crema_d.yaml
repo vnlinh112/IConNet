@@ -1,0 +1,16 @@
+name: crema_d
+config_type: dataset
+root: ../data/crema_d/
+preprocessed: ../data/crema_d/features/
+classnames: [NEU, HAP, SAD, ANG, FEA, DIS]
+tasks:
+  6 emotions:
+    labels: [0, 1, 2, 3, 4, 5]
+    classnames: [NEU, HAP, SAD, ANG, FEA, DIS]
+    colors: [black, green, blue, red, purple, orange]
+    markers: [o, ^, s, s, s, s]
+  4 emotions:
+    labels: [0, 1, 2, 3]
+    classnames: [NEU, HAP, SAD, ANG]
+    colors: [gray, green, blue, red]
+    markers: [o, ^, s, s]

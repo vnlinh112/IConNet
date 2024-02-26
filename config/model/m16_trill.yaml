@@ -1,0 +1,22 @@
+name: M16_trill
+description: FirConv M16 for trill
+fe:
+  n_block: 2
+  n_channel: [64, 32]
+  kernel_size: [15, 15]
+  stride: [1, 1]
+  window_k: [2, 9]
+  residual_connection_type: 'stack'
+  residual_nonlinearity: 'leaky_relu'
+  pooling: 'mean'
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+  learnable_bands: True
+  learnable_windows: True
+  shared_window: False
+  mel_resolution: 1
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'

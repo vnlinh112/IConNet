@@ -1,0 +1,17 @@
+name: M13_ravdess
+description: FirConv M13 for ravdess
+fe:
+  n_block: 2
+  n_channel: [64, 64]
+  kernel_size: [63, 31]
+  stride: [4, 4]
+  window_k: [2, 9]
+  residual_connection_type: 'concat'
+  pooling: 'mean'
+  filter_type: 'firwin'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'
