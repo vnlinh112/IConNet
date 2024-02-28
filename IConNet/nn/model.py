@@ -7,11 +7,7 @@ from collections import OrderedDict
 from einops import rearrange, reduce
 import torch.nn as nn
 import torchaudio
-
-def get_optional_config_value(config_value: None):
-    if config_value is None or config_value=='None' or config_value==False:
-        return None
-    return config_value
+from ..utils.config import get_optional_config_value
 
 class M10(nn.Module):
     """

@@ -3,30 +3,30 @@ from typing import Optional, Iterable
 import numpy as np
 import os
 from einops import rearrange
+from ..utils.config import DatasetConfig, get_valid_path
 
 class PickleDataset:
     def __init__(
-            self, config, 
+            self, config: DatasetConfig, 
             data_dir: str = "data/",
             pickle_file_ext: str = "npy"):
         self.config = config
         self.name = self.config.name
-        self.num_classes = self.config.num_classes
-        self.classnames = self.config.classnames
+        self.classnames = list(np.array(self.config.classnames).flatten())
+        self.label_values = list(np.array(self.config.label_values).flatten())
         self.pickle_file_ext = pickle_file_ext
-        self.data_dir = self.get_valid_path(data_dir) + self.get_valid_path(self.config.root)
+        self.data_dir = get_valid_path(data_dir) + get_valid_path(self.config.root)
+        self.feature_dir = self.data_dir + get_valid_path(self.config.feature_dir)
         assert os.path.isdir(self.data_dir)
         self.data_x: Optional[Iterable] = None
         self.data_y: Optional[Iterable] = None
-    
-    @staticmethod
-    def get_valid_path(path: str):
-        if path.endswith('/'):
-            return path 
-        return path + '/'
+
+    @property
+    def num_classes(self) -> int:
+        return len(self.labels)
     
     def load_feature(self, feature_name: str):
-        file_path = f"{self.data_dir}{self.name}.{feature_name}.{self.pickle_file_ext}"
+        file_path = f"{self.feature_dir}{self.name}.{feature_name}.{self.pickle_file_ext}"
         data = np.load(file_path, allow_pickle=True)
         return data
 
@@ -37,8 +37,8 @@ class PickleDataset:
         return self.classnames[idx]
 
     def load(self):
-        self.data_y = self.load_feature(self.config.label_file)
-        self.data_x = self.load_feature(self.feature_name)
+        self.data_y = self.load_feature(self.config.label_name)
+        self.data_x = self.load_feature(self.config.feature_name)
     
     @staticmethod
     def collate_fn(batch):

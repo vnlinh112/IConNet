@@ -12,6 +12,10 @@ def get_optional_config_value(config_value: None):
         return None
     return config_value
 
+def get_valid_path(path: str):
+    if path.endswith('/'):
+        return path 
+    return path + '/'
 
 class PyTorchOptimizer(StrEnum):
     SGD = auto()
@@ -40,14 +44,19 @@ class PoolingType(StrEnum):
 
 @dataclass
 class DatasetConfig:
-    name: str = "meld"
-    root: str = "../data/meld/"
-    audio: str = "../data/meld/audio16k"
-    preprocessed: str = "../data/meld/features/"
-    classnames: Iterable[str] = field(
+    name: str = "crema_d"
+    root: str = "crema_d/"
+    audio_dir: str = "full_release/"
+    feature_dir: str = "preprocessed/"
+    label_name: str = "label_emotion"
+    feature_name: str = "audio16k"
+    num_classes: int = 6
+    label_values: Iterable[Union[str, int]] = field(
         default_factory = lambda: [
-            "neutral", "happy", "sad", "angry"])
-    tasks = None
+            "neu", "hap", "sad", "ang", "fea", "dis"])
+    classnames: Iterable[Union[str, int]] = field(
+        default_factory = lambda: [
+            "neu", "hap", "sad", "ang", "fea", "dis"])
     
 @dataclass
 class FeBlockConfig:
@@ -101,6 +110,31 @@ class TrainPyTorchConfig(TrainConfig):
 
 @dataclass
 class Config:
+    data_dir: str
+    log_dir: str = "_logs/"
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
-    train: TrainConfig = field(default_factory=TrainPyTorchConfig)
+    # train: TrainConfig = field(default_factory=TrainPyTorchConfig)
+    batch_size: int = 16
+    n_epoch: int = 2
+    early_stopping: bool = False
+    log_interval: int = 40
+    optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
+    optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
+        default_factory = lambda: {
+            "weight_decay": 0.0001
+        })
+    learning_rate_init: float = 0.001
+    lr_scheduler: Optional[PyTorchLR] = PyTorchLR.OneCyleLR
+    lr_scheduler_kwargs: Dict[str, Union[str,int,float,bool]] = field(
+        default_factory = lambda: {
+            "step_size": 40
+        })
+    max_epochs: int=100
+    min_epochs: int=10
+    gpus: int=1
+    val_check_interval: float=0.5
+    precision: int=32
+    cross_validation: bool = False
+    num_folds: int=5
+    random_seed: int=42 

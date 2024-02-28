@@ -3,14 +3,15 @@ from torch.utils.data import random_split, DataLoader
 import torch
 from sklearn.model_selection import StratifiedKFold
 from typing import Optional, Iterable, Literal
-from ..dataset import Dataset, CustomDataset
+from ..dataset import WaveformDataset as Dataset
+from ..utils.config import DatasetConfig
 import math 
 import numpy as np
     
 class DataModule(L.DataModule):
     def __init__(
             self,
-            config,
+            config: DatasetConfig,
             data_dir: str = "data/",
             batch_size: int = 16,
             num_workers: int = 0,
@@ -20,7 +21,6 @@ class DataModule(L.DataModule):
         
         self.save_hyperparameters(logger=False)
         self.config = config
-
         self.collate_tn: callable = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
@@ -39,17 +39,28 @@ class DataModule(L.DataModule):
         # download...
         pass
 
-    def setup(self, stage: str=None):
+    def setup(
+            self, 
+            stage: Literal["fit", "test", "predict"]="fit",
+            data_test: Optional[Iterable]=None,
+            data_predict: Optional[Iterable]=None):
         if stage == "fit":
-            data_full = Dataset(self.hparams.data_dir)
-            self.data_train, self.data_val = data_full.train_test_split()
-            self.collate_fn = data_full.collate_fn
+            ds = Dataset(
+                config=self.config,
+                data_dir=self.hparams.data_dir,
+                labels=self.hparams.labels)
+            ds.setup()
+            self.data_train, self.data_val = ds.get_train_test_split()
+            self.collate_fn = ds.collate_fn
 
         if stage == "test":
-            self.data_test = Dataset(self.hparams.data_dir)
+            if data_predict is None:
+                self.data_test = self.data_val
+            else:
+                self.data_test = data_test
 
         if stage == "predict":
-            self.data_predict = Dataset(self.hparams.data_dir)
+            self.data_predict = data_predict
 
     @staticmethod
     def get_suitable_batch_size(
@@ -131,7 +142,7 @@ class DataModuleKFold(DataModule):
         return self.num_classes
 
     def prepare_data(self):
-        self.dataset = CustomDataset(
+        self.dataset = Dataset(
             config = self.config,
             feature_name = self.hparams.feature_name,
             data_dir = self.hparams.data_dir)

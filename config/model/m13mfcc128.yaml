@@ -1,7 +1,7 @@
 name: M13mfcc
 description: FirConv with fftconv
 mfcc:
-  n_mfcc: 64
+  n_mfcc: 128
   n_fft: 1024
   hop_length: 128
   n_mels: 128
@@ -9,5 +9,5 @@ mfcc:
 pooling: 'mean'
 cls:
   n_block: 2 
-  n_hidden_dim: [256, 256]
+  n_hidden_dim: [512, 512]
   norm_type: 'LayerNorm'

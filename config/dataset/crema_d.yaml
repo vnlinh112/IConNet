@@ -1,8 +1,9 @@
 name: crema_d
 root: crema_d/
 audio_dir: full_release/
-feature_dir: features/
-label_file: label_emotion_key
+feature_dir: preprocessing/
+label_name: label6
+feature_name: audio16k
 num_classes: 6
 label_values: [neu, hap, sad, ang, fea, dis]
 classnames: [neu, hap, sad, ang, fea, dis]
