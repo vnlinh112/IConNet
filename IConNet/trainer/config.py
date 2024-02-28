@@ -12,15 +12,6 @@ def get_optional_config_value(config_value: None):
         return None
     return config_value
 
-class SklearnSolver(StrEnum):
-    lbfgs = auto()
-    sgd = auto()
-    adam = auto()
-
-class SklearnLR(StrEnum):
-    constant = auto()
-    invscaling = auto()
-    adaptive = auto()
 
 class PyTorchOptimizer(StrEnum):
     SGD = auto()
@@ -88,17 +79,6 @@ class TrainConfig:
     batch_size: int = 16
     learning_rate_init: float = 0.001
     n_epoch: int = 2
-
-@dataclass
-class TrainSklearnConfig(TrainConfig):
-    name: str = "demo"
-    batch_size: int = 16
-    solver: SklearnSolver = SklearnSolver.adam
-    learning_rate: SklearnLR = SklearnLR.adaptive
-    learning_rate_init: float = 0.001
-    l2_reg: float = 0.001
-    max_iter: int = 10
-    early_stopping: bool = True
 
 @dataclass
 class TrainPyTorchConfig(TrainConfig):

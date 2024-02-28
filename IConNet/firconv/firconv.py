@@ -228,7 +228,7 @@ class FirConvLayer(nn.Module):
         filter_time = repeat(
             torch.arange(-n, n), 
             'k -> c k', 
-            c=self.in_channels) #* self.fs/2
+            c=self.in_channels).continuous() #* self.fs/2
         self.register_buffer('filter_time', filter_time)
 
     def _sinc_generate_filters(self):

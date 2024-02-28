@@ -1,0 +1,11 @@
+name: msp_podcast
+config_type: dataset
+root: msp_podcast/
+preprocessed: msp_podcast/features_4balanced/
+classnames: [neu, hap, sad, ang]
+tasks:
+  4_emotions:
+    labels: [0, 1, 2, 3]
+    classnames: [neu, hap, sad, ang]
+    colors: [gray, green, blue, red]
+    markers: [o, ^, s, s]

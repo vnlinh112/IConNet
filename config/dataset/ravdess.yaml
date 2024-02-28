@@ -10,11 +10,6 @@ tasks:
     classnames: [neutral, calm, happy, sad, angry, fearful, disgust, surprised]
     colors: [black, grey, green, blue, red, purple, orange, lime]
     markers: [o, o, ^, s, s, s, s, ^]
-  6_emotions:
-    labels: [2, 3, 4, 5, 6, 7]
-    classnames: [happy, sad, angry, fearful, disgust, surprised]
-    colors: [green, blue, red, purple, orange, lime]
-    markers: [^, s, s, s, s, ^]
   4_emotions:
     labels: [0, 2, 3, 4]
     classnames: [neutral, happy, sad, angry]

@@ -26,11 +26,15 @@ def print_parameters(model, all=False):
         params = model.named_parameters()
     [print(p) for p in params]
 
-def visualize_model(model, input_shape, classes_to_visit={}):
+def visualize_model(
+        model, input_shape, device='cpu',
+        classes_to_visit={}):
     print(model)
-    input = torch.rand(input_shape).to(model.device)
-    display_module(model, input, 
-                    classes_to_visit=classes_to_visit)
+    model.to(device)
+    input = torch.rand(input_shape).to(device)
+    display_module(
+        model, input, 
+        classes_to_visit=classes_to_visit)
 
 
 def visualize_multilines_by_group(
