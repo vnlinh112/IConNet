@@ -411,12 +411,53 @@ class M13mfcc(nn.Module):
             n_mfcc=config.mfcc.n_mfcc,
             melkwargs={
                 "n_fft": config.mfcc.n_fft, 
-                "hop_length": config.mfcc.hop_length, 
-                "n_mels": config.mfcc.n_mels, 
-                "center": False
+                "hop_length": config.mfcc.n_fft, 
+                "n_mels": config.mfcc.n_mels
                 })
         self.pooling = get_optional_config_value(self.config.pooling)
         self.n_feature = config.mfcc.n_mfcc
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            norm_type=config.cls.norm_type
+        )
+
+    def forward(self, x):
+        x = self.mfcc(x)
+        if self.pooling is not None:
+            x = reduce(x, 'b 1 c n -> b c', self.pooling)
+        else: 
+            x = rearrange(x, 'b c n -> b (c n)')
+        x = self.cls_head(x)
+        return x 
+    
+class M13mel(nn.Module):
+    """
+    A classification model using FIRConv with fftconv => pooling => FFN
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+        self.mfcc = torchaudio.transforms.MelSpectrogram(
+            sample_rate = config.mfcc.sample_rate,
+            n_fft = config.mfcc.n_fft,
+            hop_length = config.mfcc.n_fft,
+            n_mels=config.mfcc.n_mels)
+        self.pooling = get_optional_config_value(self.config.pooling)
+        self.n_feature = config.mfcc.n_mels
         self.cls_head = Classifier(
             n_input = self.n_feature,
             n_output = n_output,
