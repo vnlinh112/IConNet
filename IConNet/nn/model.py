@@ -411,8 +411,9 @@ class M13mfcc(nn.Module):
             n_mfcc=config.mfcc.n_mfcc,
             melkwargs={
                 "n_fft": config.mfcc.n_fft, 
-                "hop_length": config.mfcc.n_fft, 
-                "n_mels": config.mfcc.n_mels
+                "hop_length": config.mfcc.hop_length, 
+                "n_mels": config.mfcc.n_mels,
+                "center": False
                 })
         self.pooling = get_optional_config_value(self.config.pooling)
         self.n_feature = config.mfcc.n_mfcc
@@ -454,8 +455,9 @@ class M13mel(nn.Module):
         self.mfcc = torchaudio.transforms.MelSpectrogram(
             sample_rate = config.mfcc.sample_rate,
             n_fft = config.mfcc.n_fft,
-            hop_length = config.mfcc.n_fft,
-            n_mels=config.mfcc.n_mels)
+            hop_length = config.mfcc.hop_length,
+            n_mels=config.mfcc.n_mels,
+            center=False)
         self.pooling = get_optional_config_value(self.config.pooling)
         self.n_feature = config.mfcc.n_mels
         self.cls_head = Classifier(
