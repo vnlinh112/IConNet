@@ -1,0 +1,18 @@
+name: M17
+description: FirConv with fftconv + sinc
+fe:
+  n_block: 2
+  n_channel: [198, 30]
+  kernel_size: [511, 127]
+  stride: [2, 4]
+  window_k: [5, 9]
+  mel_resolution: 3
+  residual_connection_type: 'stack'
+  pooling: 'mean'
+  filter_type: 'sinc'
+  conv_mode: 'fftconv'
+  norm_type: 'LocalResponseNorm'
+cls:
+  n_block: 2 
+  n_hidden_dim: [512, 512]
+  norm_type: 'LayerNorm'
