@@ -251,7 +251,7 @@ class FirConvLayer(nn.Module):
             torch.sinc(2 * low_time))
         filters_max = reduce(
             self.filters, 'b c l -> b c ()', 'max')
-        self.filters = self.windows * self.filters / filters_max
+        self.filters = self.windows * self.filters #/ filters_max
     
     
     def _firwin_init_filters(self):
