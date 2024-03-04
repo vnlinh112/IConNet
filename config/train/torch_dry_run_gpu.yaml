@@ -10,7 +10,7 @@ lr_scheduler_kwargs:
   step_size: 40
 max_epochs: 10
 min_epochs: 2
-accelerator: cpu
+accelerator: gpu
 devices: 1
 val_check_interval: 0.5
 precision: 16-mixed
