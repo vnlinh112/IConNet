@@ -1,5 +1,6 @@
 import lightning as L
 from .model_pl import ModelPLClassification as LightningModel
+from .model_pl import PredictionWriter
 import torchmetrics
 from lightning.pytorch.loggers import (
     TensorBoardLogger, WandbLogger, CSVLogger
@@ -7,6 +8,7 @@ from lightning.pytorch.loggers import (
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from .dataloader import DataModule, DataModuleKFold
 from ..utils.config import Config, get_valid_path
+import wandb
 
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
@@ -48,7 +50,7 @@ def get_loggers(
     tb_logger = TensorBoardLogger(
         save_dir=f"{experiment_dir}", name=run_name)
     loggers = [tb_logger, csv_logger, wandb_logger]
-    return loggers
+    return loggers, run_dir
 
 def train(
         config: Config,
@@ -67,9 +69,9 @@ def train(
             data_dir=config.data_dir,
             pin_memory=pin_memory)
         data.prepare_data()
-        data.setup()
+    data.setup()
     
-    loggers = get_loggers(
+    loggers, run_dir = get_loggers(
         dataset = data.config.name,
         feature = data.config.feature_name,
         model_name = config.model.name,
@@ -82,21 +84,23 @@ def train(
         config.model, 
         n_input=data.num_channels, 
         n_output=data.num_classes)
+    
+    callbacks = [PredictionWriter(
+        output_dir=run_dir, write_interval="epoch")]
 
     if config.train.early_stopping:
-        early_stop_callback = [EarlyStopping(
+        callbacks += [EarlyStopping(
             monitor="val_acc", 
             min_delta=0.00, 
             patience=3, 
             verbose=False, 
             mode="max")]
-    else:
-        early_stop_callback = None
+    
 
     trainer = L.Trainer(
         max_epochs=config.train.max_epochs,
         min_epochs=config.train.min_epochs,
-        callbacks=early_stop_callback,
+        callbacks=callbacks,
         accelerator=config.train.accelerator,
         devices=config.train.devices,
         gradient_clip_val=1.,
@@ -106,8 +110,6 @@ def train(
         deterministic=True,
     )
 
-    trainer.log_hyperparams(config)
-
     trainer.fit(
         litmodel, 
         train_dataloaders = data.train_dataloader(), 
@@ -115,9 +117,19 @@ def train(
         # ckpt_path="last"
         )
     
+    data.setup("test")
     trainer.test(
-        dataloaders= data.val_dataloader(), #data.test_dataloader(),
+        dataloaders=data.test_dataloader(),
         ckpt_path="best")
+    
+    data.setup("predict")
+    trainer.predict(
+        dataloaders=data.predict_dataloader(),
+        ckpt_path="best",
+        return_predictions=False
+    )
+
+    wandb.finish()
     
     
 def train_cv(config: Config, experiment_prefix=""):
@@ -133,7 +145,6 @@ def train_cv(config: Config, experiment_prefix=""):
             split_seed=config.train.random_seed,
             pin_memory=pin_memory)
         data.prepare_data()
-        data.setup()
 
         train(
             data=data,

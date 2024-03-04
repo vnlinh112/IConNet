@@ -14,7 +14,7 @@ class DataModule(L.LightningDataModule):
             config: DatasetConfig,
             data_dir: str = "data/",
             batch_size: int = 16,
-            num_workers: int = 4,
+            num_workers: int = 8,
             pin_memory: bool = False
         ):
         super().__init__()
@@ -60,22 +60,31 @@ class DataModule(L.LightningDataModule):
         self.feature_dim = self.dataset.feature_dim
         self.collate_fn = self.dataset.collate_fn
 
+    def get_tensor_x(self, data):
+        x = [torch.tensor(
+            np.array(x, dtype=float), 
+            dtype=torch.float) for (x,y) in data]
+        return x
+
     def setup(
             self, 
             stage: Literal["fit", "test", "predict"]="fit",
             data_test: Optional[Iterable]=None,
             data_predict: Optional[Iterable]=None):
         if stage == "fit":
-            self.data_train, self.data_val = self.get_train_test_split()
+            self.data_train, self.data_val = self.dataset.get_train_test_split()
 
         if stage == "test":
-            if data_predict is None:
+            if data_test is None:
                 self.data_test = self.data_val
             else:
                 self.data_test = data_test
 
         if stage == "predict":
-            self.data_predict = data_predict
+            if data_predict is None:
+                self.data_predict = self.get_tensor_x(self.data_val)
+            else:
+                self.data_predict = data_predict
 
     @staticmethod
     def get_suitable_batch_size(
@@ -123,10 +132,7 @@ class DataModule(L.LightningDataModule):
             )
     
     def predict_dataloader(self):
-        self.predict_batch_size = self.get_suitable_batch_size(
-            data_size=len(self.data_test),
-            batch_size=self.batch_size
-        )
+        self.predict_batch_size = 1
         return DataLoader(
             dataset=self.data_predict, 
             batch_size=self.predict_batch_size, 
@@ -190,13 +196,14 @@ class DataModuleKFold(DataModule):
             dataset_full = self.dataset.get_data()
             all_splits = [k for k in kf.split(dataset_full, self.dataset.data_y)]
 
-            train_indices, val_indices = all_splits[self.fold_number]
+            train_indices, val_indices = all_splits[self.fold_number-1]
             self.data_val = self.filter_by_indices(dataset_full, val_indices)
             self.data_train = self.filter_by_indices(dataset_full, train_indices)
         
         if stage == "test":
-            self.data_test = self.dataset.get_data()
+            self.data_test = self.data_val
 
         if stage == "predict":
-            self.data_predict = self.dataset.get_data()
+            self.data_predict = self.get_tensor_x(self.data_val)
+            
     

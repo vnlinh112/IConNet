@@ -2,6 +2,7 @@ import torch
 import lightning as L
 from .metrics import get_metrics, get_detail_metrics
 from .model_wrapper import ModelWrapper
+from lightning.pytorch.callbacks import BasePredictionWriter
 
 import wandb
 import matplotlib.pyplot as plt
@@ -9,6 +10,7 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import sys
+import os
 
 class ModelPLClassification(L.LightningModule):
     def __init__(self, config, n_input, n_output, 
@@ -49,20 +51,25 @@ class ModelPLClassification(L.LightningModule):
         logits = self.forward(x)
         loss = self.criterion(logits, y)
         self.log('val_loss', loss)
-        output = self.val_metrics(logits, y)
-        self.log_dict(output)
+        self.val_metrics.update(logits, y)
         return loss
+    
+    def on_validation_epoch_end(self):
+        output = self.val_metrics.compute()
+        self.log_dict(output, on_step=False, on_epoch=True)
+        self.val_metrics.reset()  
     
     def test_step(self, batch, batch_idx):
         x, y = batch
         logits = self.model(x)
-        loss = self.criterion(logits, y)    
-        self.log('test_loss', loss)
         output = self.test_metrics(logits, y)
         self.log_dict(output)
         # self.test_metrics_detail(logits, y)
         # self.test_confusion_matrix(logits, y)
-        return loss
+        return logits
+    
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        return self(batch)
     
     # def on_test_epoch_end(self):
     #     test_confusion_matrix = self.test_confusion_matrix.compute()
@@ -98,3 +105,41 @@ class ModelPLClassification(L.LightningModule):
         ]
         optimizer = torch.optim.RAdam(optimizer_grouped_parameters, lr=1e-4)
         return optimizer
+    
+
+class PredictionWriter(BasePredictionWriter):
+
+    def __init__(self, output_dir, write_interval):
+        super().__init__(write_interval)
+        self.output_dir = output_dir
+
+    def write_on_batch_end(
+            self, trainer, pl_module, 
+            prediction, batch_indices, 
+            batch, batch_idx, dataloader_idx
+            ):
+        out_path = os.path.join(
+            self.output_dir, 
+            dataloader_idx, 
+            f"{batch_idx}.pt")
+        torch.save(prediction, out_path)
+
+    def write_on_epoch_end(
+            self, trainer, pl_module, 
+            predictions, batch_indices
+            ):
+        out_path = os.path.join(self.output_dir, "predictions.pt")
+        torch.save(predictions, out_path)
+
+    
+class PredictionWriterDDP(BasePredictionWriter):
+
+    def __init__(self, output_dir, write_interval):
+        super().__init__(write_interval)
+        self.output_dir = output_dir
+
+    def write_on_epoch_end(self, trainer, pl_module, predictions, batch_indices):
+        # this will create N (num processes) files in `output_dir` each containing
+        # the predictions of it's respective rank
+        out_path = os.path.join(self.output_dir, f"predictions_{trainer.global_rank}.pt")
+        torch.save(predictions, out_path)
