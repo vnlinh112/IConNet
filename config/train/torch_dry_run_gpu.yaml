@@ -1,5 +1,5 @@
 name: torch dry run
-batch_size: 16
+batch_size: 8
 early_stopping: False
 optimizer: RAdam
 optimizer_kwargs:
@@ -8,12 +8,12 @@ learning_rate_init: 0.001
 lr_scheduler: OneCyleLR
 lr_scheduler_kwargs:
   step_size: 40
-max_epochs: 5
-min_epochs: 1
+max_epochs: 10
+min_epochs: 2
 accelerator: cpu
 devices: 1
 val_check_interval: 0.5
-precision: 32
+precision: 16-mixed
 cross_validation: False
 num_folds: 5
 random_seed: 42 

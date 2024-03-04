@@ -6,50 +6,77 @@ from lightning.pytorch.loggers import (
 )
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from .dataloader import DataModule, DataModuleKFold
-L.seed_everything(42, workers=True)
-
 from ..utils.config import Config, get_valid_path
 
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
+def get_loggers(
+        dataset, 
+        feature, 
+        model_name, 
+        experiment_prefix="", 
+        experiment_suffix="", 
+        log_dir: str = '_logs/'
+):  
+    
+    experiment_dir = f"{dataset}" 
+    if experiment_prefix is not None and len(experiment_prefix) > 0:
+        experiment_dir = f"{experiment_prefix}.{experiment_dir}"
+    wandb_project = "test-ser-23" #experiment_dir
+    experiment_dir = f'{log_dir}{experiment_dir}/'
+
+    run_name = f"{model_name}" 
+    if experiment_suffix is not None and len(experiment_suffix) > 0:
+        run_name = f"{run_name}.{experiment_suffix}"
+
+    run_dir = f'{experiment_dir}{run_name}/' 
+
+    if not os.path.isdir(run_dir):
+        os.makedirs(run_dir, exist_ok=True)
+        print(f'Created log dir: {run_dir}')
+    else:
+        print(f'Writing to existing log dir: {run_dir}')
+
+    print(f'Logging to wandb project: {wandb_project}')
+
+    wandb_logger = WandbLogger(
+        project=wandb_project,
+        save_dir=f"{run_dir}", name=run_name) 
+    csv_logger = CSVLogger(
+        save_dir=f"{experiment_dir}", name=run_name)
+    tb_logger = TensorBoardLogger(
+        save_dir=f"{experiment_dir}", name=run_name)
+    loggers = [tb_logger, csv_logger, wandb_logger]
+    return loggers
+
 def train(
         config: Config,
         data: DataModule = None,
-        experiment_prefix="", # fold1
+        experiment_prefix="", # dryrun, test, hpc, ...
         experiment_suffix="", # red-racoon
-        log_dir: str = '_logs/'):
+        log_dir: str = '_logs/'
+        ):
+    
+    L.seed_everything(config.train.random_seed, workers=True)
+    pin_memory = config.train.accelerator == 'gpu'
     
     if data is None:
         data = DataModule(
             config=config.dataset,
             data_dir=config.data_dir,
-            labels=config.labels)
+            pin_memory=pin_memory)
         data.prepare_data()
         data.setup()
-
-    dataset = data.config.name
-    feature= data.config.feature_name
-    model_name = config.model.name
-
-    log_dir = get_valid_path(log_dir)
-
-    # exp = f"{model_name}.{dataset}.{feature}"               # M13.ravdess.audio16k
-    exp = f"{model_name}" 
-
-    if experiment_prefix is not None and len(experiment_prefix) > 0:
-        exp = f"{experiment_prefix}.{exp}"
-    if experiment_suffix is not None and len(experiment_suffix) > 0:
-        exp = f"{exp}.{experiment_suffix}"  # SER4.M13.ravdess.audio16k.fold1
-
-    wandb_logger = WandbLogger(
-        project="test-ser-23",  #TODO: change to prefix_dataset
-        save_dir=f"{log_dir}", name=exp) 
-    csv_logger = CSVLogger(
-        save_dir=f"{log_dir}", name=dataset)
-    tb_logger = TensorBoardLogger(
-        save_dir=f"{log_dir}", name=dataset)
-    loggers = [tb_logger, csv_logger, wandb_logger]
+    
+    loggers = get_loggers(
+        dataset = data.config.name,
+        feature = data.config.feature_name,
+        model_name = config.model.name,
+        log_dir = get_valid_path(log_dir),
+        experiment_prefix = experiment_prefix,
+        experiment_suffix = experiment_suffix
+    )
 
     litmodel = LightningModel(
         config.model, 
@@ -74,10 +101,11 @@ def train(
         devices=config.train.devices,
         gradient_clip_val=1.,
         val_check_interval=config.train.val_check_interval,  # 0.5: twice per epoch
-        precision=config.train.precision,            # floating precision 16 makes ~5x faster
+        precision=config.train.precision,            # floating precision 16-mixed makes ~5x faster
         logger=loggers,
         deterministic=True,
     )
+
     trainer.fit(
         litmodel, 
         train_dataloaders = data.train_dataloader(), 
@@ -92,22 +120,22 @@ def train(
     
 def train_cv(config: Config, experiment_prefix=""):
     num_folds = config.train.num_folds
+    pin_memory = config.train.accelerator == 'gpu'
     for i in range(num_folds):
         fold_number = i+1
         data = DataModuleKFold(
             config=config.dataset,
             data_dir=config.data_dir,
-            labels=config.labels,
             fold_number=fold_number, 
             num_splits=num_folds, 
-            split_seed=config.train.random_seed)
+            split_seed=config.train.random_seed,
+            pin_memory=pin_memory)
         data.prepare_data()
         data.setup()
 
         train(
             data=data,
-            model_config=config.model,
-            log_dir=config.log_dir,
+            config=config,
             experiment_prefix=experiment_prefix,
             experiment_suffix=f'fold{fold_number}'
         )

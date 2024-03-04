@@ -65,6 +65,9 @@ class DatasetConfig:
     classnames: Iterable[str] = field(
         default_factory = lambda: [
             "neu", "hap", "sad", "ang", "fea", "dis"])
+    target_labels: Optional[Iterable[str]] = field(
+        default_factory = lambda: [
+            "ang", "neu", "sad", "hap"])
     
 @dataclass
 class FeBlockConfig:
@@ -131,6 +134,3 @@ class Config:
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainPyTorchConfig)
-    labels: Iterable[str] = field(
-        default_factory = lambda: [
-            "ang", "neu", "sad", "hap"])

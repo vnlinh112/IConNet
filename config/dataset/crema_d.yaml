@@ -7,3 +7,4 @@ feature_name: audio16k
 num_classes: 6
 label_values: [neu, hap, sad, ang, fea, dis]
 classnames: [neu, hap, sad, ang, fea, dis]
+target_labels: [ang, neu, sad, hap]

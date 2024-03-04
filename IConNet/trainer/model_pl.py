@@ -6,6 +6,7 @@ from .model_wrapper import ModelWrapper
 class ModelPLClassification(L.LightningModule):
     def __init__(self, config, n_input, n_output):
         super().__init__()
+        self.save_hyperparameters()
         self.config = config
         self.n_input = n_input
         self.n_output = n_output

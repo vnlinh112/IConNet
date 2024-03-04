@@ -15,18 +15,17 @@ class DataModule(L.LightningDataModule):
             data_dir: str = "data/",
             batch_size: int = 16,
             num_workers: int = 4,
-            pin_memory: bool = False,
-            labels: Optional[Iterable] = None
+            pin_memory: bool = False
         ):
         super().__init__()
         
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters()
         self.config = config
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers 
         self.pin_memory = pin_memory
-        self.labels = labels
+        self.labels = config.target_labels
         self.collate_tn: callable = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
@@ -53,8 +52,13 @@ class DataModule(L.LightningDataModule):
         return num_channels
 
     def prepare_data(self):
-        # download...
-        pass
+        self.dataset = Dataset(
+            config=self.config,
+            data_dir=self.data_dir,
+            labels=self.labels)
+        self.dataset.setup()
+        self.feature_dim = self.dataset.feature_dim
+        self.collate_fn = self.dataset.collate_fn
 
     def setup(
             self, 
@@ -62,14 +66,7 @@ class DataModule(L.LightningDataModule):
             data_test: Optional[Iterable]=None,
             data_predict: Optional[Iterable]=None):
         if stage == "fit":
-            ds = Dataset(
-                config=self.config,
-                data_dir=self.data_dir,
-                labels=self.labels)
-            ds.setup()
-            self.feature_dim = ds.feature_dim
-            self.data_train, self.data_val = ds.get_train_test_split()
-            self.collate_fn = ds.collate_fn
+            self.data_train, self.data_val = self.get_train_test_split()
 
         if stage == "test":
             if data_predict is None:
@@ -151,21 +148,20 @@ class DataModuleKFold(DataModule):
             num_splits: int = 5,
             batch_size: int = 16,
             num_workers: int = 0,
-            pin_memory: bool = False,
-            labels: Optional[Iterable] = None
+            pin_memory: bool = False
         ):
         super().__init__(
             config,
             data_dir,
             batch_size,
             num_workers,
-            pin_memory,
-            labels
+            pin_memory
         )
+        self.save_hyperparameters()
         self.fold_number = fold_number
         self.split_seed = split_seed
         self.num_splits = num_splits
-        assert 1 <= self.k <= self.num_splits, "incorrect fold number" 
+        assert 1 <= self.fold_number <= self.num_splits, "incorrect fold number" 
 
     def get_num_classes(self) -> int:
         return self.num_classes
@@ -173,9 +169,15 @@ class DataModuleKFold(DataModule):
     def prepare_data(self):
         self.dataset = Dataset(
             config = self.config,
-            feature_name = self.hparams.feature_name,
-            data_dir = self.hparams.data_dir)
+            data_dir = self.data_dir,
+            labels=self.labels)
+        self.dataset.setup()
+        self.feature_dim = self.dataset.feature_dim
         self.collate_fn = self.dataset.collate_fn
+
+    def filter_by_indices(self, data, indices):
+        out = [data[i] for i in indices]
+        return out
 
     def setup(
             self, 
@@ -186,12 +188,12 @@ class DataModuleKFold(DataModule):
                 shuffle=True, 
                 random_state=self.split_seed)
             dataset_full = self.dataset.get_data()
-            all_splits = [k for k in kf.split(dataset_full)]
+            all_splits = [k for k in kf.split(dataset_full, self.dataset.data_y)]
 
             train_indices, val_indices = all_splits[self.fold_number]
-            self.data_train = dataset_full[train_indices.tolist()] 
-            self.data_val = dataset_full[val_indices.tolist()]
-
+            self.data_val = self.filter_by_indices(dataset_full, val_indices)
+            self.data_train = self.filter_by_indices(dataset_full, train_indices)
+        
         if stage == "test":
             self.data_test = self.dataset.get_data()
 
