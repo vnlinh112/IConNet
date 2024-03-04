@@ -1,15 +1,24 @@
 import torch
 import lightning as L
-from .metrics import get_metrics
+from .metrics import get_metrics, get_detail_metrics
 from .model_wrapper import ModelWrapper
 
+import wandb
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+import sys
+
 class ModelPLClassification(L.LightningModule):
-    def __init__(self, config, n_input, n_output):
+    def __init__(self, config, n_input, n_output, 
+                 classnames=None):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
         self.n_input = n_input
         self.n_output = n_output
+        self.classnames = classnames
         self.model = ModelWrapper(self.config.name).init_model(
             self.config, n_input=n_input, n_output=n_output)
         
@@ -17,6 +26,9 @@ class ModelPLClassification(L.LightningModule):
         self.train_metrics = get_metrics(n_output, 'train')
         self.val_metrics = get_metrics(n_output, 'val')
         self.test_metrics = get_metrics(n_output, 'test')
+        # test_metrics_detail, test_confusion_matrix = get_detail_metrics(n_output, 'test')
+        # self.test_metrics_detail = test_metrics_detail
+        # self.test_confusion_matrix = test_confusion_matrix
 
     def forward(self, x):
         logits = self.model(x)
@@ -48,7 +60,23 @@ class ModelPLClassification(L.LightningModule):
         self.log('test_loss', loss)
         output = self.test_metrics(logits, y)
         self.log_dict(output)
+        # self.test_metrics_detail(logits, y)
+        # self.test_confusion_matrix(logits, y)
         return loss
+    
+    # def on_test_epoch_end(self):
+    #     test_confusion_matrix = self.test_confusion_matrix.compute()
+    #     class_names = self.classnames
+    #     df_cm = pd.DataFrame(
+    #         test_confusion_matrix.cpu().numpy() , 
+    #         index = class_names, 
+    #         columns = class_names)   
+    #     norm =  np.sum(df_cm, axis=1)
+    #     normalized_cm = (df_cm.T/norm).T
+    #     f, ax = plt.subplots(figsize = (15,10)) 
+    #     sns.heatmap(normalized_cm, annot=True, ax=ax)
+    #     wandb.log({"plot": wandb.Image(f) })
+    #     self.test_confusion_matrix.reset()  
 
     def configure_optimizers(self):
         """

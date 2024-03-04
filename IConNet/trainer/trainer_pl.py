@@ -106,6 +106,8 @@ def train(
         deterministic=True,
     )
 
+    trainer.log_hyperparams(config)
+
     trainer.fit(
         litmodel, 
         train_dataloaders = data.train_dataloader(), 
