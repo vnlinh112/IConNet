@@ -8,19 +8,25 @@ from ..utils.config import DatasetConfig
 import math 
 import numpy as np
     
-class DataModule(L.DataModule):
+class DataModule(L.LightningDataModule):
     def __init__(
             self,
             config: DatasetConfig,
             data_dir: str = "data/",
             batch_size: int = 16,
-            num_workers: int = 0,
-            pin_memory: bool = False
+            num_workers: int = 4,
+            pin_memory: bool = False,
+            labels: Optional[Iterable] = None
         ):
         super().__init__()
         
         self.save_hyperparameters(logger=False)
         self.config = config
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.num_workers = num_workers 
+        self.pin_memory = pin_memory
+        self.labels = labels
         self.collate_tn: callable = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
@@ -34,6 +40,17 @@ class DataModule(L.DataModule):
     @property
     def classnames(self) -> Iterable[str]:
         return self.config.classnames
+    
+    @property
+    def num_channels(self) -> int:
+        num_channels = None
+        if self.data_train:
+            num_channels = self.feature_dim
+        elif self.data_test:
+            num_channels = self.data_test[0].shape[1]
+        elif self.data_predict:
+            num_channels = self.data_predict[0].shape[1]
+        return num_channels
 
     def prepare_data(self):
         # download...
@@ -47,9 +64,10 @@ class DataModule(L.DataModule):
         if stage == "fit":
             ds = Dataset(
                 config=self.config,
-                data_dir=self.hparams.data_dir,
-                labels=self.hparams.labels)
+                data_dir=self.data_dir,
+                labels=self.labels)
             ds.setup()
+            self.feature_dim = ds.feature_dim
             self.data_train, self.data_val = ds.get_train_test_split()
             self.collate_fn = ds.collate_fn
 
@@ -69,14 +87,14 @@ class DataModule(L.DataModule):
         """Get maximum divisor for data_size that is less than or equal to batch_size."""
         num_range = np.arange(min(math.sqrt(data_size), batch_size))[1:][::-1]
         divisors = [i for i in num_range if data_size % i==0]
-        return divisors[0]
+        return int(divisors[0])
 
     def train_dataloader(self):
         return DataLoader(
             dataset=self.data_train, 
-            batch_size=self.hparams.batch_size, 
-            num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory, 
+            batch_size=self.batch_size, 
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory, 
             collate_fn=self.collate_fn,
             drop_last=True,
             shuffle=True
@@ -85,37 +103,37 @@ class DataModule(L.DataModule):
     def val_dataloader(self):
         self.val_batch_size = self.get_suitable_batch_size(
             data_size=len(self.data_val),
-            batch_size=self.hparams.batch_size
+            batch_size=self.batch_size
         )
         return DataLoader(
             dataset=self.data_val, 
             batch_size=self.val_batch_size, 
-            num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
             collate_fn=self.collate_fn
             )
     
     def test_dataloader(self):
         self.test_batch_size = self.get_suitable_batch_size(
             data_size=len(self.data_test),
-            batch_size=self.hparams.batch_size
+            batch_size=self.batch_size
         )
         return DataLoader(
             dataset=self.data_test, 
             batch_size=self.test_batch_size, 
-            num_workers=self.hparams.num_workers,
+            num_workers=self.num_workers,
             collate_fn=self.collate_fn
             )
     
     def predict_dataloader(self):
         self.predict_batch_size = self.get_suitable_batch_size(
             data_size=len(self.data_test),
-            batch_size=self.hparams.batch_size
+            batch_size=self.batch_size
         )
         return DataLoader(
             dataset=self.data_predict, 
             batch_size=self.predict_batch_size, 
-            num_workers=self.hparams.num_workers
+            num_workers=self.num_workers
         )
 
 class DataModuleKFold(DataModule):
@@ -133,9 +151,20 @@ class DataModuleKFold(DataModule):
             num_splits: int = 5,
             batch_size: int = 16,
             num_workers: int = 0,
-            pin_memory: bool = False
+            pin_memory: bool = False,
+            labels: Optional[Iterable] = None
         ):
-        super().__init__()
+        super().__init__(
+            config,
+            data_dir,
+            batch_size,
+            num_workers,
+            pin_memory,
+            labels
+        )
+        self.fold_number = fold_number
+        self.split_seed = split_seed
+        self.num_splits = num_splits
         assert 1 <= self.k <= self.num_splits, "incorrect fold number" 
 
     def get_num_classes(self) -> int:
@@ -153,13 +182,13 @@ class DataModuleKFold(DataModule):
             stage: Literal['fit', 'test', 'predict']='fit'):
         if stage == "fit":
             kf = StratifiedKFold(
-                n_splits=self.hparams.num_splits, 
+                n_splits=self.num_splits, 
                 shuffle=True, 
-                random_state=self.hparams.split_seed)
+                random_state=self.split_seed)
             dataset_full = self.dataset.get_data()
             all_splits = [k for k in kf.split(dataset_full)]
 
-            train_indices, val_indices = all_splits[self.hparams.fold_number]
+            train_indices, val_indices = all_splits[self.fold_number]
             self.data_train = dataset_full[train_indices.tolist()] 
             self.data_val = dataset_full[val_indices.tolist()]
 

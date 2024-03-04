@@ -42,6 +42,13 @@ class PoolingType(StrEnum):
     mean = auto()
     sum = auto()
 
+class AcceleratorType(StrEnum):
+    cpu = auto()
+    gpu = auto()
+    tpu = auto()
+    ipu = auto()
+    hpu = auto()
+
 @dataclass
 class DatasetConfig:
     name: str = "crema_d"
@@ -51,10 +58,10 @@ class DatasetConfig:
     label_name: str = "label_emotion"
     feature_name: str = "audio16k"
     num_classes: int = 6
-    label_values: Iterable[Union[str, int]] = field(
+    label_values: Iterable[str] = field(
         default_factory = lambda: [
             "neu", "hap", "sad", "ang", "fea", "dis"])
-    classnames: Iterable[Union[str, int]] = field(
+    classnames: Iterable[str] = field(
         default_factory = lambda: [
             "neu", "hap", "sad", "ang", "fea", "dis"])
     
@@ -91,34 +98,10 @@ class TrainConfig:
 
 @dataclass
 class TrainPyTorchConfig(TrainConfig):
-    name: str = "demo"
+    name: str = "torch demo"
     batch_size: int = 16
     n_epoch: int = 2
     early_stopping: bool = False
-    log_interval: int = 40
-    optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
-    optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
-        default_factory = lambda: {
-            "weight_decay": 0.0001
-        })
-    learning_rate_init: float = 0.001
-    lr_scheduler: Optional[PyTorchLR] = PyTorchLR.OneCyleLR
-    lr_scheduler_kwargs: Dict[str, Union[str,int,float,bool]] = field(
-        default_factory = lambda: {
-            "step_size": 40
-        })
-
-@dataclass
-class Config:
-    data_dir: str
-    log_dir: str = "_logs/"
-    dataset: DatasetConfig = field(default_factory=DatasetConfig)
-    model: ModelConfig = field(default_factory=ModelConfig)
-    # train: TrainConfig = field(default_factory=TrainPyTorchConfig)
-    batch_size: int = 16
-    n_epoch: int = 2
-    early_stopping: bool = False
-    log_interval: int = 40
     optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
     optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
         default_factory = lambda: {
@@ -132,9 +115,21 @@ class Config:
         })
     max_epochs: int=100
     min_epochs: int=10
-    gpus: int=1
+    accelerator: AcceleratorType=AcceleratorType.cpu
+    devces: int=1
     val_check_interval: float=0.5
     precision: int=32
     cross_validation: bool = False
     num_folds: int=5
     random_seed: int=42 
+
+@dataclass
+class Config:
+    data_dir: str
+    log_dir: str = "_logs/"
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
+    train: TrainConfig = field(default_factory=TrainPyTorchConfig)
+    labels: Iterable[str] = field(
+        default_factory = lambda: [
+            "ang", "neu", "sad", "hap"])

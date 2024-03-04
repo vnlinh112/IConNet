@@ -1,18 +1,21 @@
 import torch
-import pytorch_lightning as pl
+import lightning as L
 from .metrics import get_metrics
 from .model_wrapper import ModelWrapper
 
-class ModelPLClassification(pl.LightningModule):
-    def __init__(self, config):
+class ModelPLClassification(L.LightningModule):
+    def __init__(self, config, n_input, n_output):
         super().__init__()
         self.config = config
-        self.model = ModelWrapper(self.config)
+        self.n_input = n_input
+        self.n_output = n_output
+        self.model = ModelWrapper(self.config.name).init_model(
+            self.config, n_input=n_input, n_output=n_output)
         
         self.criterion = torch.nn.CrossEntropyLoss()
-        self.train_metrics = get_metrics(config.num_class, 'train')
-        self.val_metrics = get_metrics(config.num_class, 'val')
-        self.test_metrics = get_metrics(config.num_class, 'test')
+        self.train_metrics = get_metrics(n_output, 'train')
+        self.val_metrics = get_metrics(n_output, 'val')
+        self.test_metrics = get_metrics(n_output, 'test')
 
     def forward(self, x):
         logits = self.model(x)

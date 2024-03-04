@@ -1,17 +1,18 @@
 import torch
 from ..nn.model import (
     M13, M13sinc, M13mfcc, 
-    M18, M18sinc, M18mfcc)
+    M18, #M18sinc, 
+    M18mfcc)
 from ..visualizer import display_module
 
 MODEL_PICKER = {
-            'M13':      lambda: M13,
-            'M13sinc':  lambda: M13sinc,
-            'M13mfcc':  lambda: M13mfcc,
-            'M13mfcc':  lambda: M13mfcc,
-            'M18':      lambda: M18,
-            'M18sinc':  lambda: M18sinc,
-            'M18mfcc':  lambda: M18mfcc,
+            'M13':      M13,
+            'M13sinc':  M13sinc,
+            'M13mfcc':  M13mfcc,
+            'M13mfcc':  M13mfcc,
+            'M18':      M18,
+            # 'M18sinc':  M18sinc,
+            'M18mfcc':  M18mfcc,
         }
 
 class ModelWrapper:

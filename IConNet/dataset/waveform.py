@@ -86,7 +86,7 @@ class WaveformDataset(PickleDataset):
             self, 
             data_x: Optional[Iterable] = None,
             data_y: Optional[Iterable] = None):
-        if data_x is not None and data_y is not None:           
+        if data_x is not None and data_y is not None: 
             self.data_x = data_x
             self.data_y = data_y
         else:
