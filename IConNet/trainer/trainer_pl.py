@@ -10,11 +10,14 @@ L.seed_everything(42, workers=True)
 
 from ..utils.config import Config, get_valid_path
 
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+
 def train(
         config: Config,
         data: DataModule = None,
-        experiment_prefix="", # test
-        experiment_suffix="", # fold1
+        experiment_prefix="", # fold1
+        experiment_suffix="", # red-racoon
         log_dir: str = '_logs/'):
     
     if data is None:
@@ -31,15 +34,21 @@ def train(
 
     log_dir = get_valid_path(log_dir)
 
-    exp = f"{model_name}.{dataset}.{feature}"               # M13.ravdess.audio16k
-    exp = f"{experiment_prefix}.{exp}.{experiment_suffix}"  # SER4.M13.ravdess.audio16k.fold1
+    # exp = f"{model_name}.{dataset}.{feature}"               # M13.ravdess.audio16k
+    exp = f"{model_name}" 
+
+    if experiment_prefix is not None and len(experiment_prefix) > 0:
+        exp = f"{experiment_prefix}.{exp}"
+    if experiment_suffix is not None and len(experiment_suffix) > 0:
+        exp = f"{exp}.{experiment_suffix}"  # SER4.M13.ravdess.audio16k.fold1
+
     wandb_logger = WandbLogger(
-        project="test-ser-23", 
-        save_dir=f"{log_dir}wandb_logs", name=exp)
+        project="test-ser-23",  #TODO: change to prefix_dataset
+        save_dir=f"{log_dir}", name=exp) 
     csv_logger = CSVLogger(
-        save_dir=f"{log_dir}lightning_logs", name=exp)
+        save_dir=f"{log_dir}", name=dataset)
     tb_logger = TensorBoardLogger(
-        save_dir=f"{log_dir}lightning_logs", name=exp)
+        save_dir=f"{log_dir}", name=dataset)
     loggers = [tb_logger, csv_logger, wandb_logger]
 
     litmodel = LightningModel(
@@ -77,7 +86,7 @@ def train(
         )
     
     trainer.test(
-        dataloaders=data.test_dataloader(),
+        dataloaders= data.val_dataloader(), #data.test_dataloader(),
         ckpt_path="best")
     
     

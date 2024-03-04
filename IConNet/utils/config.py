@@ -49,6 +49,7 @@ class AcceleratorType(StrEnum):
     ipu = auto()
     hpu = auto()
 
+
 @dataclass
 class DatasetConfig:
     name: str = "crema_d"
@@ -118,7 +119,7 @@ class TrainPyTorchConfig(TrainConfig):
     accelerator: AcceleratorType=AcceleratorType.cpu
     devces: int=1
     val_check_interval: float=0.5
-    precision: int=32
+    precision = 32
     cross_validation: bool = False
     num_folds: int=5
     random_seed: int=42 
