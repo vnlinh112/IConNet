@@ -12,6 +12,7 @@ max_epochs: 10
 min_epochs: 2
 accelerator: gpu
 devices: 1
+num_workers: 8
 val_check_interval: 0.5
 precision: 16-mixed
 cross_validation: False

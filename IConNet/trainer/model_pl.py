@@ -12,11 +12,22 @@ import numpy as np
 import sys
 import os
 
+from typing import Optional
+from ..utils.config import TrainPyTorchConfig
+
 class ModelPLClassification(L.LightningModule):
-    def __init__(self, config, n_input, n_output, 
-                 classnames=None):
+    def __init__(
+            self, 
+            config, 
+            n_input, 
+            n_output, 
+            train_config: Optional[TrainPyTorchConfig]=None,
+            classnames=None,
+            lr_scheduler_steps_per_epoch=1
+            ):
         super().__init__()
-        self.save_hyperparameters()
+
+        
         self.config = config
         self.n_input = n_input
         self.n_output = n_output
@@ -31,6 +42,10 @@ class ModelPLClassification(L.LightningModule):
         # test_metrics_detail, test_confusion_matrix = get_detail_metrics(n_output, 'test')
         # self.test_metrics_detail = test_metrics_detail
         # self.test_confusion_matrix = test_confusion_matrix
+
+        self.lr_scheduler_steps_per_epoch = lr_scheduler_steps_per_epoch
+        self.train_config = train_config
+        self.save_hyperparameters()
 
     def forward(self, x):
         logits = self.model(x)
@@ -62,11 +77,15 @@ class ModelPLClassification(L.LightningModule):
     def test_step(self, batch, batch_idx):
         x, y = batch
         logits = self.model(x)
-        output = self.test_metrics(logits, y)
-        self.log_dict(output)
-        # self.test_metrics_detail(logits, y)
-        # self.test_confusion_matrix(logits, y)
+        self.test_metrics.update(logits, y)
+        # self.test_metrics_detail.update(logits, y)
+        # self.test_confusion_matrix.update(logits, y)
         return logits
+
+    def on_test_epoch_end(self):
+        output = self.test_metrics.compute()
+        self.log_dict(output, on_step=False, on_epoch=True)
+        self.test_metrics.reset()
     
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         return self(batch)
@@ -91,11 +110,15 @@ class ModelPLClassification(L.LightningModule):
         Prepare optimizer and schedule (linear warmup and decay)
         """
         no_decay = ["bias", "LayerNorm.weight"]
+        try:
+            weight_decay = self.train_config.optimizer_kwargs.weight_decay
+        except Exception:
+            weight_decay = 1e-5
         optimizer_grouped_parameters = [
             {
                 "params": [p for n, p in self.model.named_parameters() 
                            if not any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,
+                "weight_decay": weight_decay,
             },
             {
                 "params": [p for n, p in self.model.named_parameters() 
@@ -103,8 +126,26 @@ class ModelPLClassification(L.LightningModule):
                 "weight_decay": 0.0,
             },
         ]
-        optimizer = torch.optim.RAdam(optimizer_grouped_parameters, lr=1e-4)
-        return optimizer
+        optimizer = torch.optim.RAdam(
+            optimizer_grouped_parameters, 
+            lr=self.train_config.learning_rate_init)
+        
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, 
+            max_lr=0.05,
+            steps_per_epoch=self.lr_scheduler_steps_per_epoch, 
+            epochs=self.train_config.max_epochs)
+        optimizers = ({
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_acc",
+                "interval": "step",
+            },
+        })
+
+        return optimizers        
+
     
 
 class PredictionWriter(BasePredictionWriter):

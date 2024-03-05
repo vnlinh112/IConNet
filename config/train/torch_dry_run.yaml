@@ -12,6 +12,7 @@ max_epochs: 5
 min_epochs: 1
 accelerator: cpu
 devices: 1
+num_workers: 8
 val_check_interval: 0.5
 precision: 32
 cross_validation: False

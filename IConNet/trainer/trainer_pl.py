@@ -79,6 +79,8 @@ def train(
         data = DataModule(
             config=config.dataset,
             data_dir=config.data_dir,
+            num_workers=config.train.num_workers,
+            batch_size=config.train.batch_size,
             pin_memory=pin_memory)
         data.prepare_data()
     data.setup()
@@ -86,7 +88,10 @@ def train(
     litmodel = LightningModel(
         config.model, 
         n_input=data.num_channels, 
-        n_output=data.num_classes)
+        n_output=data.num_classes,
+        train_config=config.train,
+        classnames=data.classnames,
+        lr_scheduler_steps_per_epoch=len(data.train_dataloader))
     
     callbacks = [PredictionWriter(
         output_dir=run_dir, write_interval="epoch")]
@@ -164,6 +169,8 @@ def train_cv(
             fold_number=fold_number, 
             num_splits=num_folds, 
             split_seed=config.train.random_seed,
+            batch_size=config.train.batch_size,
+            num_workers=config.train.num_workers,
             pin_memory=pin_memory)
         data.prepare_data()
 

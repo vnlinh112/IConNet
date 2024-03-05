@@ -21,6 +21,7 @@ from .model_wrapper import ModelWrapper
 
 class Trainer:
     def __init__(self, config, device):
+        self.config = config
         self.batch_size = config.train.batch_size
         self.device = device
         self.labels = config.labels
@@ -37,7 +38,9 @@ class Trainer:
             self.config.model.name)(self.config.model)
         self.train_losses = []
         self.test_accuracy = []
-        self.optimizer = optim.RAdam(self.model.parameters(), lr=0.01)
+        self.optimizer = optim.RAdam(
+            self.model.parameters(), 
+            lr=self.config.train.learning_rate_init)
         self.log_interval = 40
         self.pbar_update = 1 / (len(self.train_loader) + len(self.test_loader))
 

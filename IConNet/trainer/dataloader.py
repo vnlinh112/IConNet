@@ -34,11 +34,11 @@ class DataModule(L.LightningDataModule):
 
     @property
     def num_classes(self) -> int:
-        return self.config.num_classes
+        return self.dataset.num_classes
     
     @property
     def classnames(self) -> Iterable[str]:
-        return self.config.classnames
+        return self.dataset.labels
     
     @property
     def num_channels(self) -> int:
@@ -163,10 +163,11 @@ class DataModuleKFold(DataModule):
             num_workers,
             pin_memory
         )
-        self.save_hyperparameters()
+        
         self.fold_number = fold_number
         self.split_seed = split_seed
         self.num_splits = num_splits
+        self.save_hyperparameters()
         assert 0 <= self.fold_number < self.num_splits, "fold number starts from 0" 
 
     def get_num_classes(self) -> int:

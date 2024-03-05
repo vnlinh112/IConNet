@@ -121,6 +121,7 @@ class TrainPyTorchConfig(TrainConfig):
     min_epochs: int=10
     accelerator: AcceleratorType=AcceleratorType.cpu
     devces: int=1
+    num_workers: int=8
     val_check_interval: float=0.5
     precision = 32
     cross_validation: bool = False
