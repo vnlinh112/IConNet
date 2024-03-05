@@ -7,3 +7,4 @@ feature_name: audio16k
 num_classes: 4
 label_values: [anger, hapiness, neutral, sadness]
 classnames: [ang, hap, neu, sad]
+target_labels: [ang, neu, hap, sad]
