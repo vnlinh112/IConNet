@@ -10,7 +10,9 @@ lr_scheduler_kwargs:
   step_size: 40
 max_epochs: 5
 min_epochs: 1
+detect_anomaly: True
 accelerator: cpu
+num_nodes: 1
 devices: 1
 num_workers: 8
 val_check_interval: 0.5

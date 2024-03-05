@@ -22,8 +22,7 @@ class ModelPLClassification(L.LightningModule):
             n_input, 
             n_output, 
             train_config: Optional[TrainPyTorchConfig]=None,
-            classnames=None,
-            lr_scheduler_steps_per_epoch=1
+            classnames=None
             ):
         super().__init__()
 
@@ -43,7 +42,6 @@ class ModelPLClassification(L.LightningModule):
         # self.test_metrics_detail = test_metrics_detail
         # self.test_confusion_matrix = test_confusion_matrix
 
-        self.lr_scheduler_steps_per_epoch = lr_scheduler_steps_per_epoch
         self.train_config = train_config
         self.save_hyperparameters()
 
@@ -133,8 +131,8 @@ class ModelPLClassification(L.LightningModule):
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer, 
             max_lr=0.05,
-            steps_per_epoch=self.lr_scheduler_steps_per_epoch, 
-            epochs=self.train_config.max_epochs)
+            epochs=self.train_config.max_epochs,
+            total_steps=self.trainer.estimated_stepping_batches)
         optimizers = ({
             "optimizer": optimizer,
             "lr_scheduler": {

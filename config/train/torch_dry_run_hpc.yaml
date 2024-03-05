@@ -10,8 +10,10 @@ lr_scheduler_kwargs:
   step_size: 40
 max_epochs: 20
 min_epochs: 2
+detect_anomaly: False 
 accelerator: gpu
 devices: 1
+num_nodes: 1
 num_workers: 16
 val_check_interval: 0.5
 precision: 32

@@ -91,7 +91,8 @@ def train(
         n_output=data.num_classes,
         train_config=config.train,
         classnames=data.classnames,
-        lr_scheduler_steps_per_epoch=len(data.train_dataloader))
+        # lr_scheduler_steps_per_epoch=len(data.train_dataloader)
+        )
     
     callbacks = [PredictionWriter(
         output_dir=run_dir, write_interval="epoch")]
@@ -111,11 +112,14 @@ def train(
         callbacks=callbacks,
         accelerator=config.train.accelerator,
         devices=config.train.devices,
+        num_nodes=config.train.num_nodes,
         gradient_clip_val=1.,
         val_check_interval=config.train.val_check_interval,  # 0.5: twice per epoch
         precision=config.train.precision,            # floating precision 16-mixed makes ~5x faster
         logger=loggers,
         deterministic=True,
+        detect_anomaly=config.train.detect_anomaly,
+        inference_mode=False # use torch.no_grad
     )
 
     trainer.fit(

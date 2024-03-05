@@ -48,7 +48,14 @@ class AcceleratorType(StrEnum):
     tpu = auto()
     ipu = auto()
     hpu = auto()
+    auto = auto()
 
+class TrainerStrategyType(StrEnum):
+    ddp = auto()
+    fsdp = auto()
+    ddp_spawn = auto()
+    deepspeed = auto()
+    auto = auto()
 
 @dataclass
 class DatasetConfig:
@@ -119,9 +126,12 @@ class TrainPyTorchConfig(TrainConfig):
         })
     max_epochs: int=100
     min_epochs: int=10
+    detect_anomaly: bool = False
+    # strategy: Optional[TrainerStrategyType] = None
     accelerator: AcceleratorType=AcceleratorType.cpu
-    devces: int=1
-    num_workers: int=8
+    devices: int=1
+    num_nodes: int=1 # num gpu nodes
+    num_workers: int=8 
     val_check_interval: float=0.5
     precision = 32
     cross_validation: bool = False
