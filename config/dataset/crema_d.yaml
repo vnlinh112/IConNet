@@ -1,16 +1,10 @@
 name: crema_d
-config_type: dataset
-root: ../data/crema_d/
-preprocessed: ../data/crema_d/features/
-classnames: [NEU, HAP, SAD, ANG, FEA, DIS]
-tasks:
-  6 emotions:
-    labels: [0, 1, 2, 3, 4, 5]
-    classnames: [NEU, HAP, SAD, ANG, FEA, DIS]
-    colors: [black, green, blue, red, purple, orange]
-    markers: [o, ^, s, s, s, s]
-  4 emotions:
-    labels: [0, 1, 2, 3]
-    classnames: [NEU, HAP, SAD, ANG]
-    colors: [gray, green, blue, red]
-    markers: [o, ^, s, s]
+root: crema_d/
+audio_dir: full_release/
+feature_dir: preprocessing/
+label_name: label6
+feature_name: audio16k
+num_classes: 6
+label_values: [neu, hap, sad, ang, fea, dis]
+classnames: [neu, hap, sad, ang, fea, dis]
+target_labels: [ang, neu, sad, hap]

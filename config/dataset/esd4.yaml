@@ -1,0 +1,10 @@
+name: esd
+root: esd/
+audio_dir: full_release/
+feature_dir: features_4balanced/
+label_name: label_emotion
+feature_name: audio16k
+num_classes: 4
+label_values: [anger, hapiness, neutral, sadness]
+classnames: [ang, hap, neu, sad]
+target_labels: [ang, neu, hap, sad]

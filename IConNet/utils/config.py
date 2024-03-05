@@ -12,15 +12,10 @@ def get_optional_config_value(config_value: None):
         return None
     return config_value
 
-class SklearnSolver(StrEnum):
-    lbfgs = auto()
-    sgd = auto()
-    adam = auto()
-
-class SklearnLR(StrEnum):
-    constant = auto()
-    invscaling = auto()
-    adaptive = auto()
+def get_valid_path(path: str):
+    if path.endswith('/'):
+        return path 
+    return path + '/'
 
 class PyTorchOptimizer(StrEnum):
     SGD = auto()
@@ -47,16 +42,39 @@ class PoolingType(StrEnum):
     mean = auto()
     sum = auto()
 
+class AcceleratorType(StrEnum):
+    cpu = auto()
+    gpu = auto()
+    tpu = auto()
+    ipu = auto()
+    hpu = auto()
+    auto = auto()
+
+class TrainerStrategyType(StrEnum):
+    ddp = auto()
+    fsdp = auto()
+    ddp_spawn = auto()
+    deepspeed = auto()
+    auto = auto()
+
 @dataclass
 class DatasetConfig:
-    name: str = "meld"
-    root: str = "../data/meld/"
-    audio: str = "../data/meld/audio16k"
-    preprocessed: str = "../data/meld/features/"
+    name: str = "crema_d"
+    root: str = "crema_d/"
+    audio_dir: str = "full_release/"
+    feature_dir: str = "preprocessed/"
+    label_name: str = "label_emotion"
+    feature_name: str = "audio16k"
+    num_classes: int = 6
+    label_values: Iterable[str] = field(
+        default_factory = lambda: [
+            "neu", "hap", "sad", "ang", "fea", "dis"])
     classnames: Iterable[str] = field(
         default_factory = lambda: [
-            "neutral", "happy", "sad", "angry"])
-    tasks = None
+            "neu", "hap", "sad", "ang", "fea", "dis"])
+    target_labels: Optional[Iterable[str]] = field(
+        default_factory = lambda: [
+            "ang", "neu", "sad", "hap"])
     
 @dataclass
 class FeBlockConfig:
@@ -90,23 +108,11 @@ class TrainConfig:
     n_epoch: int = 2
 
 @dataclass
-class TrainSklearnConfig(TrainConfig):
-    name: str = "demo"
-    batch_size: int = 16
-    solver: SklearnSolver = SklearnSolver.adam
-    learning_rate: SklearnLR = SklearnLR.adaptive
-    learning_rate_init: float = 0.001
-    l2_reg: float = 0.001
-    max_iter: int = 10
-    early_stopping: bool = True
-
-@dataclass
 class TrainPyTorchConfig(TrainConfig):
-    name: str = "demo"
+    name: str = "torch demo"
     batch_size: int = 16
     n_epoch: int = 2
     early_stopping: bool = False
-    log_interval: int = 40
     optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
     optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
         default_factory = lambda: {
@@ -118,9 +124,24 @@ class TrainPyTorchConfig(TrainConfig):
         default_factory = lambda: {
             "step_size": 40
         })
+    max_epochs: int=100
+    min_epochs: int=10
+    detect_anomaly: bool = False
+    # strategy: Optional[TrainerStrategyType] = None
+    accelerator: AcceleratorType=AcceleratorType.cpu
+    devices: int=1
+    num_nodes: int=1 # num gpu nodes
+    num_workers: int=8 
+    val_check_interval: float=0.5
+    precision = 32
+    cross_validation: bool = False
+    num_folds: int=5
+    random_seed: int=42 
 
 @dataclass
 class Config:
+    data_dir: str
+    log_dir: str = "_logs/"
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainPyTorchConfig)

@@ -1,22 +1,10 @@
 name: ravdess
-config_type: dataset
-root: ../data/ravdess/
-audio: ../data/ravdess/audio16k
-preprocessed: ../data/ravdess/features/
-classnames: [neutral, calm, happy, sad, angry, fearful, disgust, surprised]
-tasks:
-  8_emotions:
-    labels: [0, 1, 2, 3, 4, 5, 6, 7]
-    classnames: [neutral, calm, happy, sad, angry, fearful, disgust, surprised]
-    colors: [black, grey, green, blue, red, purple, orange, lime]
-    markers: [o, o, ^, s, s, s, s, ^]
-  6_emotions:
-    labels: [2, 3, 4, 5, 6, 7]
-    classnames: [happy, sad, angry, fearful, disgust, surprised]
-    colors: [green, blue, red, purple, orange, lime]
-    markers: [^, s, s, s, s, ^]
-  4_emotions:
-    labels: [0, 2, 3, 4]
-    classnames: [neutral, happy, sad, angry]
-    colors: [gray, green, blue, red]
-    markers: [o, ^, s, s]
+root: ravdess/
+audio_dir: full_release/
+feature_dir: preprocessing/
+label_name: label_emotion_key
+feature_name: audio16k
+num_classes: 8
+label_values: [neu, cal, hap, sad, ang, fea, dis, sur]
+classnames: [neu, cal, hap, sad, ang, fea, dis, sur]
+target_labels: [ang, neu, sad, hap]

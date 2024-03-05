@@ -6,6 +6,7 @@ fe:
   kernel_size: [511, 127]
   stride: [8, 2]
   window_k: [2, 9]
+  mel_resolution: 4
   residual_connection_type: 'stack'
   pooling: 'mean'
   filter_type: 'firwin'
