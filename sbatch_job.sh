@@ -8,11 +8,13 @@
 #SBATCH --gres=gpu:4g.32gb:2
 #SBATCH --partition=gpu.medium
 
+export SRUN_CPUS_PER_TASK=16
+
 module add cuda/cudnn/8.4.1 python/3.10.5
 module load anaconda
 
 conda activate audio
-python train.py \
+srun python train.py \
     '+data_dir=../data/data_preprocessed/' \
     'model=m13ser' \
     'train=torch_dry_run_hpc'
