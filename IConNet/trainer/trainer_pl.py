@@ -57,12 +57,24 @@ def train(
         data: DataModule = None,
         experiment_prefix="", # dryrun, test, hpc, ...
         experiment_suffix="", # red-racoon
-        log_dir: str = '_logs/'
+        log_dir: str = '_logs/',
+        loggers = None,
+        run_dir = None
         ):
     
     L.seed_everything(config.train.random_seed, workers=True)
     pin_memory = config.train.accelerator == 'gpu'
     
+    if loggers is None:
+        loggers, run_dir = get_loggers(
+            dataset = config.dataset.name,
+            feature = config.dataset.feature_name,
+            model_name = config.model.name,
+            log_dir = get_valid_path(log_dir),
+            experiment_prefix = experiment_prefix,
+            experiment_suffix = experiment_suffix
+        )
+
     if data is None:
         data = DataModule(
             config=config.dataset,
@@ -70,15 +82,6 @@ def train(
             pin_memory=pin_memory)
         data.prepare_data()
     data.setup()
-    
-    loggers, run_dir = get_loggers(
-        dataset = data.config.name,
-        feature = data.config.feature_name,
-        model_name = config.model.name,
-        log_dir = get_valid_path(log_dir),
-        experiment_prefix = experiment_prefix,
-        experiment_suffix = experiment_suffix
-    )
 
     litmodel = LightningModel(
         config.model, 
@@ -132,11 +135,29 @@ def train(
     wandb.finish()
     
     
-def train_cv(config: Config, experiment_prefix=""):
+def train_cv(
+        config: Config, 
+        experiment_prefix="",
+        experiment_suffix="",
+        log_dir: str = '_logs/'):
     num_folds = config.train.num_folds
     pin_memory = config.train.accelerator == 'gpu'
+    
+    log_dir = get_valid_path(log_dir) + config.dataset.name + ".cv/"
+    prefix = f'{config.model.name}.{experiment_suffix}'
     for i in range(num_folds):
-        fold_number = i+1
+        fold_number = i
+        suffix = f'fold{fold_number+1}.{experiment_suffix}'
+
+        loggers, run_dir = get_loggers(
+            dataset = config.dataset.name,
+            feature = config.dataset.feature_name,
+            model_name = config.model.name,
+            log_dir = log_dir,
+            experiment_prefix = prefix,
+            experiment_suffix = suffix
+        )
+
         data = DataModuleKFold(
             config=config.dataset,
             data_dir=config.data_dir,
@@ -149,8 +170,11 @@ def train_cv(config: Config, experiment_prefix=""):
         train(
             data=data,
             config=config,
-            experiment_prefix=experiment_prefix,
-            experiment_suffix=f'fold{fold_number}'
+            experiment_prefix=prefix,
+            experiment_suffix=suffix,
+            log_dir=log_dir,
+            loggers=loggers,
+            run_dir=run_dir
         )
 
 def test(litmodel, x, y):

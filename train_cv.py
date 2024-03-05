@@ -11,10 +11,10 @@ def run(config : Config) -> None:
     print(OmegaConf.to_yaml(config))
     slug = generate_slug(2)
     date = datetime.now().strftime("%m%d%Y")
-    prefix = f'cv.{slug}.{date}'
     train_cv(
         config, 
-        experiment_prefix=prefix)
+        experiment_prefix="",
+        experiment_suffix=f'{slug}')
     
 if __name__ == "__main__":
     run()

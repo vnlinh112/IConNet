@@ -167,7 +167,7 @@ class DataModuleKFold(DataModule):
         self.fold_number = fold_number
         self.split_seed = split_seed
         self.num_splits = num_splits
-        assert 1 <= self.fold_number <= self.num_splits, "incorrect fold number" 
+        assert 0 <= self.fold_number < self.num_splits, "fold number starts from 0" 
 
     def get_num_classes(self) -> int:
         return self.num_classes
@@ -196,7 +196,7 @@ class DataModuleKFold(DataModule):
             dataset_full = self.dataset.get_data()
             all_splits = [k for k in kf.split(dataset_full, self.dataset.data_y)]
 
-            train_indices, val_indices = all_splits[self.fold_number-1]
+            train_indices, val_indices = all_splits[self.fold_number]
             self.data_val = self.filter_by_indices(dataset_full, val_indices)
             self.data_train = self.filter_by_indices(dataset_full, train_indices)
         
