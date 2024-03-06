@@ -13,6 +13,9 @@ import wandb
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
+import torch
+torch.set_float32_matmul_precision("high")
+
 def get_loggers(
         dataset, 
         feature, 
