@@ -104,7 +104,7 @@ def train(
         )
     
     callbacks = []
-    if config.accumulate_grad:
+    if config.train.accumulate_grad:
         if config.train.accumulate_grad_scheduler:
             callbacks += [GradientAccumulationScheduler(
                 scheduling=config.train.accumulate_grad_scheduler)]
