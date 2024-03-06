@@ -20,7 +20,8 @@ def get_loggers(
         wandb_project="",
         experiment_prefix="", 
         experiment_suffix="", 
-        log_dir: str = '_logs/'
+        log_dir: str = '_logs/',
+        tensorboard = False
 ):  
     
     experiment_dir = f"{dataset}" 
@@ -49,9 +50,12 @@ def get_loggers(
         save_dir=f"{run_dir}", name=run_name) 
     csv_logger = CSVLogger(
         save_dir=f"{experiment_dir}", name=run_name)
-    tb_logger = TensorBoardLogger(
-        save_dir=f"{experiment_dir}", name=run_name)
-    loggers = [tb_logger, csv_logger, wandb_logger]
+    if tensorboard:
+        tb_logger = TensorBoardLogger(
+            save_dir=f"{experiment_dir}", name=run_name)
+        loggers = [tb_logger, csv_logger, wandb_logger]
+    else:
+        loggers = [csv_logger, wandb_logger]
     return loggers, run_dir
 
 def train(
