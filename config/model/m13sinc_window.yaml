@@ -1,5 +1,5 @@
-name: M14sinc
-description: FirConv with fftconv
+name: M13sinc
+description: FirConv with Sinc layers with learnable windows
 fe:
   n_block: 2
   n_channel: [198, 30]
