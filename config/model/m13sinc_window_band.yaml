@@ -9,7 +9,7 @@ fe:
   residual_connection_type: stack
   pooling: mean
   filter_type: sinc
-  learnable_bands: False
+  learnable_bands: True
   learnable_windows: True
   shared_window: False
   window_func: hamming
