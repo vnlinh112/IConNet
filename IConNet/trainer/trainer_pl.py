@@ -104,13 +104,13 @@ def train(
         )
     
     callbacks = []
-    if config.grad:
+    if config.accumulate_grad:
         if config.train.accumulate_grad_scheduler:
             callbacks += [GradientAccumulationScheduler(
                 scheduling=config.train.accumulate_grad_scheduler)]
         else:
             callbacks += [GradientAccumulationScheduler(
-                scheduling={0:8, 5:4, 9:1})]
+                scheduling={0:8})]
             
     callbacks += [PredictionWriter(
         output_dir=run_dir, write_interval="epoch")]
