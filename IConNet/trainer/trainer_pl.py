@@ -17,6 +17,7 @@ def get_loggers(
         dataset, 
         feature, 
         model_name, 
+        wandb_project="",
         experiment_prefix="", 
         experiment_suffix="", 
         log_dir: str = '_logs/'
@@ -25,7 +26,8 @@ def get_loggers(
     experiment_dir = f"{dataset}" 
     if experiment_prefix is not None and len(experiment_prefix) > 0:
         experiment_dir = f"{experiment_prefix}.{experiment_dir}"
-    wandb_project = "test-ser-23" #experiment_dir
+    if wandb_project is None or len(wandb_project) == 0:
+        wandb_project = experiment_dir
     experiment_dir = f'{log_dir}{experiment_dir}/'
 
     run_name = f"{model_name}" 
@@ -152,7 +154,9 @@ def train_cv(
     num_folds = config.train.num_folds
     pin_memory = config.train.accelerator == 'gpu'
     
-    log_dir = get_valid_path(log_dir) + config.dataset.name + ".cv/"
+    wandb_project =  config.dataset.name + ".cv"
+
+    log_dir = get_valid_path(log_dir) + wandb_project
     prefix = f'{config.model.name}.{experiment_suffix}'
     for i in range(num_folds):
         fold_number = i
@@ -164,7 +168,8 @@ def train_cv(
             model_name = config.model.name,
             log_dir = log_dir,
             experiment_prefix = prefix,
-            experiment_suffix = suffix
+            experiment_suffix = suffix,
+            wandb_project="",
         )
 
         data = DataModuleKFold(
