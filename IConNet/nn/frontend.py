@@ -200,6 +200,7 @@ class FrontEndBlock(nn.Module):
         self.block = nn.ModuleDict({
             "layer": layer,
             "downsample": conv,
+            "dropout": nn.Dropout(0.1),
         })
 
     def get_output_features(self) -> int:
