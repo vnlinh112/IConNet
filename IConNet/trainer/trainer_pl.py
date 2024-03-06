@@ -99,8 +99,7 @@ def train(
         n_input=data.num_channels, 
         n_output=data.num_classes,
         train_config=config.train,
-        classnames=data.classnames,
-        # lr_scheduler_steps_per_epoch=len(data.train_dataloader)
+        classnames=data.classnames
         )
     
     callbacks = [PredictionWriter(
@@ -124,7 +123,7 @@ def train(
         num_nodes=config.train.num_nodes,
         gradient_clip_val=1.,
         val_check_interval=config.train.val_check_interval,  # 0.5: twice per epoch
-        precision=config.train.precision,            # floating precision 16-mixed makes ~5x faster
+        precision=config.train.precision,           
         logger=loggers,
         deterministic=True,
         detect_anomaly=config.train.detect_anomaly,
@@ -162,6 +161,8 @@ def train_cv(
     pin_memory = config.train.accelerator == 'gpu'
     
     wandb_project =  config.dataset.name + ".cv"
+    if experiment_prefix is not None and len(experiment_prefix) > 0:
+        wandb_project = f'{experiment_prefix}.{wandb_project}'
 
     log_dir = get_valid_path(log_dir) + wandb_project
     prefix = f'{config.model.name}.{experiment_suffix}'
