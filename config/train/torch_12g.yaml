@@ -1,6 +1,7 @@
 name: torch 12g
 batch_size: 16
 early_stopping: False
+accumulate_grad: True
 optimizer: RAdam
 optimizer_kwargs:
   weight_decay: 0.00001

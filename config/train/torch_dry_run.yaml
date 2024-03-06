@@ -1,6 +1,7 @@
 name: torch dry run
 batch_size: 16
 early_stopping: False
+accumulate_grad: False
 optimizer: RAdam
 optimizer_kwargs:
   weight_decay: 0.0001

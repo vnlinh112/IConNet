@@ -113,6 +113,7 @@ class TrainPyTorchConfig(TrainConfig):
     batch_size: int = 16
     n_epoch: int = 2
     early_stopping: bool = False
+    accumulate_grad: bool = False
     optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
     optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
         default_factory = lambda: {

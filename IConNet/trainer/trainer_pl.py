@@ -6,6 +6,7 @@ from lightning.pytorch.loggers import (
     TensorBoardLogger, WandbLogger, CSVLogger
 )
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from lightning.pytorch.callbacks import GradientAccumulationScheduler
 from .dataloader import DataModule, DataModuleKFold
 from ..utils.config import Config, get_valid_path
 import wandb
@@ -102,7 +103,16 @@ def train(
         classnames=data.classnames
         )
     
-    callbacks = [PredictionWriter(
+    callbacks = []
+    if config.train.accumulate_grad:
+        # 0-4 epoch: accumulate every 8 batches. 
+        # 5-8 epoch: accumulate every 4 batches, after that no accumulation
+        callbacks += [GradientAccumulationScheduler(
+            scheduling={0: 8, 
+                        5: 4, 
+                        9: 1})]
+    
+    callbacks += [PredictionWriter(
         output_dir=run_dir, write_interval="epoch")]
 
     if config.train.early_stopping:
