@@ -1,9 +1,5 @@
-import hydra
-from omegaconf import DictConfig, OmegaConf, MISSING
 from dataclasses import dataclass, field
-from hydra.core.config_store import ConfigStore
-
-from typing import Iterable, List, Optional, Dict, Union
+from typing import Iterable, Optional, Dict, Union
 from enum import auto
 from strenum import StrEnum
 
@@ -114,6 +110,11 @@ class TrainPyTorchConfig(TrainConfig):
     n_epoch: int = 2
     early_stopping: bool = False
     accumulate_grad: bool = False
+    accumulate_grad_scheduler: Dict[int,int] = field(
+        default_factory= lambda: {
+            0: 8, 50: 4, 80: 1
+        }
+    )
     optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
     optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
         default_factory = lambda: {

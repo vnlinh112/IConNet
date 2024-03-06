@@ -104,14 +104,14 @@ def train(
         )
     
     callbacks = []
-    if config.train.accumulate_grad:
-        # 0-4 epoch: accumulate every 8 batches. 
-        # 5-8 epoch: accumulate every 4 batches, after that no accumulation
-        callbacks += [GradientAccumulationScheduler(
-            scheduling={0: 8, 
-                        5: 4, 
-                        9: 1})]
-    
+    if config.grad:
+        if config.train.accumulate_grad_scheduler:
+            callbacks += [GradientAccumulationScheduler(
+                scheduling=config.train.accumulate_grad_scheduler)]
+        else:
+            callbacks += [GradientAccumulationScheduler(
+                scheduling={0:8, 5:4, 9:1})]
+            
     callbacks += [PredictionWriter(
         output_dir=run_dir, write_interval="epoch")]
 
@@ -122,6 +122,7 @@ def train(
             patience=3, 
             verbose=False, 
             mode="max")]
+    
     
 
     trainer = L.Trainer(
