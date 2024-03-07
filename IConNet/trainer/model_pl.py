@@ -12,7 +12,7 @@ import numpy as np
 import sys
 import os
 
-from typing import Optional
+from typing import Optional, Iterable
 from ..utils.config import TrainPyTorchConfig
 
 class ModelPLClassification(L.LightningModule):
@@ -22,7 +22,8 @@ class ModelPLClassification(L.LightningModule):
             n_input, 
             n_output, 
             train_config: Optional[TrainPyTorchConfig]=None,
-            classnames=None
+            classnames: Optional[Iterable] = None,
+            tags: Optional[Iterable] = None
             ):
         super().__init__()
 
@@ -44,6 +45,10 @@ class ModelPLClassification(L.LightningModule):
 
         self.train_config = train_config
         self.save_hyperparameters()
+
+        if tags is not None and len(tags) > 0:
+            for i,v in enumerate(tags):
+                self.hparams[f'tag{i+1}'] = v
 
     def forward(self, x):
         logits = self.model(x)

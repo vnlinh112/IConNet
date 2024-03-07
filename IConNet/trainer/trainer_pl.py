@@ -110,7 +110,8 @@ def train(
         n_input=data.num_channels, 
         n_output=data.num_classes,
         train_config=config.train,
-        classnames=data.classnames
+        classnames=data.classnames,
+        tags=config.exp.tags
         )
     
     callbacks = []
