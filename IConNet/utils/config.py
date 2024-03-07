@@ -150,11 +150,7 @@ class ExperimentConfig:
     log_dir: str = "_logs/"
     experiment_prefix: str = ""
     slug: Union[bool, str] = False
-    tag1: Union[bool, str] = False
-    tag2: Union[bool, str] = False
-    tag3: Union[bool, str] = False
-    tag4: Union[bool, str] = False
-    tag5: Union[bool, str] = False
+    tags: Iterable[str] = ()
 
 @dataclass
 class Config:

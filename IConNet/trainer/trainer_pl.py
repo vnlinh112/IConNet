@@ -14,6 +14,8 @@ from .dataloader import DataModule, DataModuleKFold
 from ..utils.config import Config, get_valid_path
 import wandb
 
+from typing import Iterable
+
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
@@ -28,7 +30,8 @@ def get_loggers(
         experiment_prefix="", 
         experiment_suffix="", 
         log_dir: str = '_logs/',
-        tensorboard = False
+        tensorboard = False,
+        tags: Iterable[str] = []
 ):  
     
     experiment_dir = f"{dataset}" 
@@ -54,7 +57,9 @@ def get_loggers(
 
     wandb_logger = WandbLogger(
         project=wandb_project,
-        save_dir=f"{run_dir}", name=run_name) 
+        save_dir=f"{run_dir}", 
+        name=run_name,
+        tags=tags) 
     csv_logger = CSVLogger(
         save_dir=f"{experiment_dir}", name=run_name)
     if tensorboard:
@@ -86,7 +91,8 @@ def train(
             model_name = config.model.name,
             log_dir = get_valid_path(log_dir),
             experiment_prefix = experiment_prefix,
-            experiment_suffix = experiment_suffix
+            experiment_suffix = experiment_suffix,
+            tags = config.exp.tags
         )
 
     if data is None:
@@ -201,7 +207,8 @@ def train_cv(
             log_dir = log_dir,
             experiment_prefix = prefix,
             experiment_suffix = suffix,
-            wandb_project="",
+            wandb_project = "",
+            tags = config.exp.tags
         )
 
         data = DataModuleKFold(
