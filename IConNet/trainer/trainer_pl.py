@@ -67,6 +67,7 @@ def get_loggers(
 
 def train(
         config: Config,
+        data_dir: str,
         data: DataModule = None,
         experiment_prefix="", # dryrun, test, hpc, ...
         experiment_suffix="", # red-racoon
@@ -91,7 +92,7 @@ def train(
     if data is None:
         data = DataModule(
             config=config.dataset,
-            data_dir=config.data_dir,
+            data_dir=data_dir,
             num_workers=config.train.num_workers,
             batch_size=config.train.batch_size,
             pin_memory=pin_memory)
@@ -176,6 +177,7 @@ def train(
     
 def train_cv(
         config: Config, 
+        data_dir: str,
         experiment_prefix="",
         experiment_suffix="",
         log_dir: str = '_logs/'):
@@ -204,7 +206,7 @@ def train_cv(
 
         data = DataModuleKFold(
             config=config.dataset,
-            data_dir=config.data_dir,
+            data_dir=data_dir,
             fold_number=fold_number, 
             num_splits=num_folds, 
             split_seed=config.train.random_seed,

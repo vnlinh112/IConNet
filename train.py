@@ -17,11 +17,13 @@ def run(config : Config) -> None:
     if config.train.cross_validation:
         train_cv(
             config, 
+            data_dir=config.exp.data_dir,
             experiment_prefix=config.exp.experiment_prefix,
             experiment_suffix=slug)
     else:
         train(
             config, 
+            data_dir=config.exp.data_dir,
             experiment_prefix=config.exp.experiment_prefix,
             experiment_suffix=slug)
     
