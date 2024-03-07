@@ -116,7 +116,7 @@ class TrainPyTorchConfig(TrainConfig):
         }
     )
     # train_scheduler: Union[bool, Iterable[int]] = False
-    swa_lrs: Union[bool, float] = False
+    checkpoint_save_top_k: int = 5 # -1: save all
     optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
     optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
         default_factory = lambda: {

@@ -1,8 +1,8 @@
 name: torch dry run
 batch_size: 64
-early_stopping: False
+early_stopping: True
 accumulate_grad: False
-swa_lrs: False
+checkpoint_save_top_k: -1
 optimizer: RAdam
 optimizer_kwargs:
   weight_decay: 0.0001

@@ -7,8 +7,7 @@ from lightning.pytorch.loggers import (
     )
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import (
-    GradientAccumulationScheduler, 
-    StochasticWeightAveraging,
+    GradientAccumulationScheduler,
     ModelCheckpoint
     )
 from .dataloader import DataModule, DataModuleKFold
@@ -115,19 +114,12 @@ def train(
         else:
             callbacks += [GradientAccumulationScheduler(
                 scheduling={0:8})]
-            
-    if config.train.swa_lrs:
-        callbacks += [StochasticWeightAveraging(
-            swa_lrs=config.train.swa_lrs,
-            swa_epoch_start=0.5
-            )]
-
+        
     callbacks += [ModelCheckpoint(
         monitor='val_UF1',
         mode='max',
-        save_top_k=5, # -1: save all, >1: save v1 v2...
+        save_top_k=config.train.checkpoint_save_top_k, # -1: save all
         save_last=True,
-        # dirpath=run_dir,
         filename='{epoch}-{val_UA:.2f}-{val_UF1:.2f}-{val_WF1:.2f}',
         auto_insert_metric_name=True,
         # save_weights_only=True,
