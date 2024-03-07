@@ -2,9 +2,4 @@ defaults:
   - dataset: crema_d
   - model: m13mfcc_sm
   - train: torch_dry_run
-  - slug: ""
-  - tag1: ""
-  - tag2: ""
-  - tag3: ""
-  - tag4: ""
-  - tag5: ""
+  - exp: auto

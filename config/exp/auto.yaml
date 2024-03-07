@@ -1,0 +1,11 @@
+name: auto
+description: auto generate slug, empty Wandb tags
+data_dir: ../data/
+log_dir: _logs/
+experiment_prefix: ""
+slug: False 
+tag1: False
+tag2: False 
+tag3: False 
+tag4: False 
+tag5: False

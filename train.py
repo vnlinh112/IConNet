@@ -17,10 +17,12 @@ def run(config : Config) -> None:
     if config.train.cross_validation:
         train_cv(
             config, 
+            experiment_prefix=config.exp.experiment_prefix,
             experiment_suffix=slug)
     else:
         train(
             config, 
+            experiment_prefix=config.exp.experiment_prefix,
             experiment_suffix=slug)
     
 if __name__ == "__main__":
