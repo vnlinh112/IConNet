@@ -3,7 +3,7 @@ import torch
 from torch import Tensor, nn
 from einops import rearrange, reduce
 from ..firconv import FirConvLayer
-from ..conv import ResidualConv1d
+from ..conv import ResidualConv1d, LongConv1d
 
 class FeBlocks(nn.Module):
     """
@@ -174,7 +174,18 @@ class FrontEndBlock(nn.Module):
                              when residual_connection_type==`stack`.\
                              Set groups=1 instead.')
 
-        conv = ResidualConv1d(
+        if self.conv_mode == 'conv':
+            conv = LongConv1d(
+                in_channels = in_channels, 
+                out_channels = out_channels, 
+                kernel_size = kernel_size, 
+                stride = stride, 
+                groups = groups,
+                conv_mode = self.conv_mode,
+                norm_type = self.norm_type,
+            )
+        else:
+            conv = ResidualConv1d(
             in_channels = in_channels, 
             out_channels = out_channels, 
             kernel_size = kernel_size, 
@@ -199,8 +210,7 @@ class FrontEndBlock(nn.Module):
         
         self.block = nn.ModuleDict({
             "layer": layer,
-            "downsample": conv,
-            "dropout": nn.Dropout(0.1),
+            "downsample": conv
         })
 
     def get_output_features(self) -> int:

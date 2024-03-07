@@ -8,8 +8,12 @@ from coolname import generate_slug
 @hydra.main(version_base=None, config_path="config", config_name="default")
 def run(config : Config) -> None:
     print(OmegaConf.to_yaml(config))
-    slug = generate_slug(2)
 
+    if not config.slug:
+        slug = generate_slug(2)
+    else:
+        slug = config.slug 
+        
     if config.train.cross_validation:
         train_cv(
             config, 

@@ -149,3 +149,9 @@ class Config:
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainPyTorchConfig)
+    slug: Union[bool, str] = False
+    tag1: Union[bool, str] = False
+    tag2: Union[bool, str] = False
+    tag3: Union[bool, str] = False
+    tag4: Union[bool, str] = False
+    tag5: Union[bool, str] = False

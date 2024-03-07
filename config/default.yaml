@@ -2,3 +2,9 @@ defaults:
   - dataset: crema_d
   - model: m13mfcc_sm
   - train: torch_dry_run
+  - slug: False
+  - tag1: False
+  - tag2: False
+  - tag3: False
+  - tag4: False
+  - tag5: False
