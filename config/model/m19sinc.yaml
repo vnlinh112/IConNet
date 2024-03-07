@@ -1,19 +1,19 @@
-name: M13sinc
+name: M19
 description: FirConv with sinc layers with Hamming window
 fe:
   n_block: 1
-  n_channel: [198, 30]
-  kernel_size: [511, 127]
-  stride: [2, 4]
-  window_k: [5, 9] # will be ignored
-  residual_connection_type: stack
+  n_channel: [256]
+  kernel_size: [511]
+  stride: [2]
+  window_k: [5] # will be ignored
+  # residual_connection_type: None
   pooling: mean
   filter_type: sinc
   learnable_bands: True
   learnable_windows: False
   shared_window: True
   window_func: hamming
-  mel_resolution: 3
+  mel_resolution: 2
   conv_mode: conv
   norm_type: LocalResponseNorm
 cls:

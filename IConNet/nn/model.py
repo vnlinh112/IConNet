@@ -478,7 +478,7 @@ class M13mel(nn.Module):
         return x 
     
 
-class M19sinc(nn.Module):
+class M19(nn.Module):
     """A classification model using Sinc layers and 1DConv without residual connection
     """
 
@@ -509,6 +509,7 @@ class M19sinc(nn.Module):
             window_func = config.fe.window_func,
             conv_mode=config.fe.conv_mode,
             norm_type=config.fe.norm_type,
+            residual_connection_type=None,
             pooling = None) # if pooling here, n_feature=1
         self.pooling = get_optional_config_value(self.config.fe.pooling)
         self.n_feature = self.fe_blocks.n_output_channel

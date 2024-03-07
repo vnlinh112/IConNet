@@ -2,7 +2,8 @@ import torch
 from ..nn.model import (
     M13, M13sinc, M13mfcc, 
     M18, #M18sinc, 
-    M18mfcc)
+    M18mfcc,
+    M19)
 from ..visualizer import display_module
 
 MODEL_PICKER = {
@@ -13,6 +14,7 @@ MODEL_PICKER = {
             'M18':      M18,
             # 'M18sinc':  M18sinc,
             'M18mfcc':  M18mfcc,
+            'M19':      M19
         }
 
 class ModelWrapper:
