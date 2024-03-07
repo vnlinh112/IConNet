@@ -9,7 +9,7 @@ from coolname import generate_slug
 def run(config : Config) -> None:
     print(OmegaConf.to_yaml(config))
 
-    if not config.slug:
+    if not config.slug or len(config.slug) == 0:
         slug = generate_slug(2)
     else:
         slug = config.slug 
