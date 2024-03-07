@@ -115,6 +115,8 @@ class TrainPyTorchConfig(TrainConfig):
             0: 8, 50: 4, 80: 1
         }
     )
+    # train_scheduler: Union[bool, Iterable[int]] = False
+    swa_lrs: Union[bool, float] = False
     optimizer: PyTorchOptimizer = PyTorchOptimizer.RAdam
     optimizer_kwargs: Dict[str, Union[str,int,float,bool]] = field(
         default_factory = lambda: {

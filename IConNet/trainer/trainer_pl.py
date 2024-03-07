@@ -4,9 +4,13 @@ from .model_pl import PredictionWriter
 import torchmetrics
 from lightning.pytorch.loggers import (
     TensorBoardLogger, WandbLogger, CSVLogger
-)
+    )
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-from lightning.pytorch.callbacks import GradientAccumulationScheduler
+from lightning.pytorch.callbacks import (
+    GradientAccumulationScheduler, 
+    StochasticWeightAveraging,
+    ModelCheckpoint
+    )
 from .dataloader import DataModule, DataModuleKFold
 from ..utils.config import Config, get_valid_path
 import wandb
@@ -112,6 +116,23 @@ def train(
             callbacks += [GradientAccumulationScheduler(
                 scheduling={0:8})]
             
+    if config.train.swa_lrs:
+        callbacks += [StochasticWeightAveraging(
+            swa_lrs=config.train.swa_lrs,
+            swa_epoch_start=0.5
+            )]
+
+    callbacks += [ModelCheckpoint(
+        monitor='val_UF1',
+        mode='max',
+        save_top_k=5, # -1: save all, >1: save v1 v2...
+        save_last=True,
+        # dirpath=run_dir,
+        filename='{epoch}-{val_UA:.2f}-{val_UF1:.2f}-{val_WF1:.2f}',
+        auto_insert_metric_name=True,
+        # save_weights_only=True,
+        every_n_epochs=1
+    )]        
     callbacks += [PredictionWriter(
         output_dir=run_dir, write_interval="epoch")]
 
@@ -119,11 +140,9 @@ def train(
         callbacks += [EarlyStopping(
             monitor="val_acc", 
             min_delta=0.00, 
-            patience=3, 
+            patience=10, 
             verbose=False, 
             mode="max")]
-    
-    
 
     trainer = L.Trainer(
         max_epochs=config.train.max_epochs,
@@ -138,14 +157,14 @@ def train(
         logger=loggers,
         deterministic=True,
         detect_anomaly=config.train.detect_anomaly,
-        inference_mode=False # use torch.no_grad
+        # inference_mode=False # use torch.no_grad
     )
 
     trainer.fit(
         litmodel, 
         train_dataloaders = data.train_dataloader(), 
         val_dataloaders = data.val_dataloader(),
-        # ckpt_path="last"
+        ckpt_path="last"
         )
     
     data.setup("test")
