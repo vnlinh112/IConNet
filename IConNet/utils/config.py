@@ -161,4 +161,4 @@ class Config:
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainPyTorchConfig)
-    exp: ExperimentConfig = field(default_factor=ExperimentConfig)
+    exp: ExperimentConfig = field(default_factory=ExperimentConfig)
