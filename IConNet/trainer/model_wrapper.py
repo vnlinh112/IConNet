@@ -1,6 +1,6 @@
 import torch
 from ..nn.model import (
-    M13, M13sinc, M13mfcc, 
+    M13, M13sinc, M13mfcc, M13mel,
     M18, #M18sinc, 
     M18mfcc,
     M19)
@@ -11,6 +11,7 @@ MODEL_PICKER = {
             'M13sinc':  M13sinc,
             'M13mfcc':  M13mfcc,
             'M13mfcc':  M13mfcc,
+            'M13mel':   M13mel,
             'M18':      M18,
             # 'M18sinc':  M18sinc,
             'M18mfcc':  M18mfcc,
