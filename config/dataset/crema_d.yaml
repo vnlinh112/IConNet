@@ -1,4 +1,5 @@
 name: crema_d
+dataset_class: WaveformDataset
 root: crema_d/
 audio_dir: full_release/
 feature_dir: preprocessing/

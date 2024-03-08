@@ -1,4 +1,5 @@
 name: meld
+dataset_class: WaveformDataset
 root: meld/
 audio_dir: full_release/
 feature_dir: features_4balanced/

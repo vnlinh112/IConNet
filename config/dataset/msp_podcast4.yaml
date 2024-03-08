@@ -1,4 +1,5 @@
 name: msp_podcast
+dataset_class: WaveformDataset
 root: msp_podcast/
 audio_dir: full_release/
 feature_dir: features_4balanced/

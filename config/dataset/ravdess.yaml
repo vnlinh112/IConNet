@@ -1,4 +1,5 @@
 name: ravdess
+dataset_class: WaveformDataset
 root: ravdess/
 audio_dir: full_release/
 feature_dir: preprocessing/

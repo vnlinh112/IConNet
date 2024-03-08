@@ -1,4 +1,5 @@
 name: esd
+dataset_class: WaveformDataset
 root: esd/
 audio_dir: full_release/
 feature_dir: features_4balanced/

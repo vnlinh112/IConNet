@@ -1,0 +1,11 @@
+name: heartsound
+dataset_class: WaveformDataset
+root: heartsound/
+audio_dir: full_release/
+feature_dir: preprocessing/
+label_name: labels_binary
+feature_name: audio16k
+num_classes: 2
+label_values: [0, 1]
+classnames: [murmur, normal]
+target_labels: [murmur, normal]

@@ -53,9 +53,15 @@ class TrainerStrategyType(StrEnum):
     deepspeed = auto()
     auto = auto()
 
+class DatasetClass(StrEnum):
+    WaveformDataset = ()
+    HeartsoundDataset = ()
+    PickleDataset = ()
+
 @dataclass
 class DatasetConfig:
     name: str = "crema_d"
+    dataset_class: DatasetClass = DatasetClass.WaveformDataset
     root: str = "crema_d/"
     audio_dir: str = "full_release/"
     feature_dir: str = "preprocessed/"
