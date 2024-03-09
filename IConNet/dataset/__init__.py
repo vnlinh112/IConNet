@@ -1,3 +1,7 @@
 from .dataset import PickleDataset as Dataset
-from .waveform import WaveformDataset
-from .heartsound import HeartsoundDataset
+from .waveform import (
+    WaveformDataset, 
+    Waveform2mfccDataset, 
+    SplittedWaveformDataset) 
+
+from .dataset_wrapper import DatasetWrapper

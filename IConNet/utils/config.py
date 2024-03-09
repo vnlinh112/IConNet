@@ -54,9 +54,9 @@ class TrainerStrategyType(StrEnum):
     auto = auto()
 
 class DatasetClass(StrEnum):
-    WaveformDataset = ()
-    HeartsoundDataset = ()
-    PickleDataset = ()
+    WaveformDataset = auto()
+    HeartsoundDataset = auto()
+    PickleDataset = auto()
 
 @dataclass
 class DatasetConfig:

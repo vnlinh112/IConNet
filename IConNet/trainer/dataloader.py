@@ -3,7 +3,7 @@ from torch.utils.data import random_split, DataLoader
 import torch
 from sklearn.model_selection import StratifiedKFold
 from typing import Optional, Iterable, Literal
-from ..dataset import WaveformDataset as Dataset
+from ..dataset import Dataset, DatasetWrapper
 from ..utils.config import DatasetConfig
 import math 
 import numpy as np
@@ -52,10 +52,11 @@ class DataModule(L.LightningDataModule):
         return num_channels
 
     def prepare_data(self):
-        self.dataset = Dataset(
+        self.dataset = DatasetWrapper(self.config.dataset_class).init(
             config=self.config,
             data_dir=self.data_dir,
-            labels=self.labels)
+            labels=self.labels
+        )
         self.dataset.setup()
         self.feature_dim = self.dataset.feature_dim
         self.collate_fn = self.dataset.collate_fn
