@@ -195,7 +195,7 @@ def train_cv(
     if experiment_prefix is not None and len(experiment_prefix) > 0:
         wandb_project = f'{experiment_prefix}.{wandb_project}'
 
-    log_dir = get_valid_path(log_dir) + wandb_project
+    log_dir = get_valid_path(log_dir) + get_valid_path(wandb_project)
     prefix = f'{config.model.name}.{experiment_suffix}'
     for i in range(num_folds):
         fold_number = i
@@ -225,6 +225,7 @@ def train_cv(
 
         train(
             data=data,
+            data_dir=config.exp.data_dir,
             config=config,
             experiment_prefix=prefix,
             experiment_suffix=suffix,

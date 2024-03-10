@@ -174,15 +174,6 @@ class DataModuleKFold(DataModule):
     def get_num_classes(self) -> int:
         return self.num_classes
 
-    def prepare_data(self):
-        self.dataset = Dataset(
-            config = self.config,
-            data_dir = self.data_dir,
-            labels=self.labels)
-        self.dataset.setup()
-        self.feature_dim = self.dataset.feature_dim
-        self.collate_fn = self.dataset.collate_fn
-
     def filter_by_indices(self, data, indices):
         out = [data[i] for i in indices]
         return out
