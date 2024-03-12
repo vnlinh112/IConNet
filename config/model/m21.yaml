@@ -1,0 +1,22 @@
+name: M21
+description: FirConv for heart sound classification
+fe:
+  n_block: 1
+  n_channel: [128]
+  kernel_size: [511]
+  stride: [4]
+  window_k: [5] 
+  residual_connection_type: stack
+  pooling: max
+  filter_type: sinc
+  learnable_bands: True
+  learnable_windows: False
+  shared_window: True
+  window_func: hamming
+  mel_resolution: 4
+  conv_mode: conv
+  norm_type: LocalResponseNorm
+cls:
+  n_block: 2 
+  n_hidden_dim: [312, 312]
+  norm_type: 'LayerNorm'

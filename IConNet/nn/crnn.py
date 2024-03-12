@@ -85,7 +85,7 @@ class MFCCFeatures(nn.Module):
         delta2 = aF.compute_deltas(x)
         x = torch.concat([x, delta1, delta2], dim=2)
         return x
-    
+
 
 class MFCC_CRNN(nn.Module):
     def __init__(self, config=None, n_input=1, n_output=2):

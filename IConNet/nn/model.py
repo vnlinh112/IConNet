@@ -595,3 +595,61 @@ class M20(nn.Module):
         x = self.seq_blocks(x)
         logits = self.cls_head.blocks[0](x)
         return logits
+    
+
+class M21(nn.Module):
+    """A classification model using Sinc layers and 1DConv without residual connection
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+        self.downsample = torchaudio.transforms.Resample(
+            orig_freq=16000,
+            new_freq=2000
+        )
+        self.fe_blocks = FeBlocks(
+            n_input_channel = n_input, 
+            n_block = config.fe.n_block,
+            n_channel = config.fe.n_channel, 
+            kernel_size = config.fe.kernel_size, 
+            stride = config.fe.stride, 
+            window_k = config.fe.window_k,
+            filter_type = config.fe.filter_type,
+            learnable_bands = config.fe.learnable_bands,
+            learnable_windows = config.fe.learnable_windows,
+            shared_window = config.fe.shared_window,
+            window_func = config.fe.window_func,
+            conv_mode=config.fe.conv_mode,
+            norm_type=config.fe.norm_type,
+            residual_connection_type=config.fe.residual_connection_type,
+            pooling = None) # if pooling here, n_feature=1
+        self.pooling = get_optional_config_value(self.config.fe.pooling)
+        self.n_feature = self.fe_blocks.n_output_channel
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            norm_type=config.cls.norm_type
+        )
+
+    def forward(self, x):
+        x = self.downsample(x)
+        x = self.fe_blocks(x)
+        if self.pooling is not None:
+            x = reduce(x, 'b c n -> b c', self.pooling)
+        else: 
+            x = rearrange(x, 'b c n -> b (c n)')
+        x = self.cls_head(x)
+        return x 
