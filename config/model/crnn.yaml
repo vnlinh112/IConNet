@@ -1,0 +1,2 @@
+name: MFCC_CRNN
+description: CNN + LSTM for heart sound classification

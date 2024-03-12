@@ -4,7 +4,7 @@ from ..nn.model import (
     M18, #M18sinc, 
     M18mfcc,
     M19)
-from ..nn.crnn import CRNN
+from ..nn.crnn import CRNN, MFCC_CRNN
 from ..visualizer import display_module
 
 MODEL_PICKER = {
@@ -18,6 +18,7 @@ MODEL_PICKER = {
             'M18mfcc':  M18mfcc,
             'M19':      M19,
             'CRNN':     CRNN,
+            'MFCC_CRNN': MFCC_CRNN
         }
 
 class ModelWrapper:

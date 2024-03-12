@@ -5,9 +5,10 @@ from .dataset import PickleDataset
 from sklearn.model_selection import train_test_split
 from ..utils.config import DatasetConfig
 from einops import rearrange
-import librosa
+# import librosa
 from torchaudio import functional as aF
 from functools import partial
+import torchaudio
 
 class WaveformDataset(PickleDataset):
     def __init__(
@@ -124,25 +125,48 @@ class Waveform2mfccDataset(WaveformDataset):
         self.collate_fn = partial(
             self.transform_batch, 
             sample_rate=self.sample_rate,
+            new_sample_rate=2000,
             lowpass_hz = 400)
-    
-    @staticmethod
-    def transform_batch(batch, sample_rate, lowpass_hz=400):
-        tensors, targets = [], []
-        for feature, label in batch:
-            tensors += [feature]
-            targets += [torch.tensor(label, dtype=torch.long)]
-        targets = torch.stack(targets)
 
-        data = np.array(feature, dtype=float)
-        data = librosa.feature.mfcc(n_mfcc=13,y=data, sr=sample_rate)
-        data1 = librosa.feature.delta(data, order=1)
-        data2 = librosa.feature.delta(data, order=2)
-        data = np.concatenate((data, data1, data2), axis=2)
-        data = torch.from_numpy(data)
-        data = aF.lowpass_biquad(data, sample_rate, lowpass_hz)
-        data = aF.preemphasis(data)
+    @staticmethod
+    def transform_batch(
+        batch, sample_rate, 
+        new_sample_rate=2000, 
+        lowpass_hz=400):
+        extract_mfcc = torchaudio.transforms.MFCC(
+            sample_rate = new_sample_rate,
+            n_mfcc=13,
+            melkwargs={"n_fft": 512, 
+                    "hop_length": 128, 
+                    "n_mels": 64, 
+                    "center": False
+                    })
         
+        tensors, targets = [], []
+        for waveform, label in batch:
+            tensors += [torch.tensor(
+                np.array(waveform, dtype=float), 
+                dtype=torch.float32)]
+            targets += [torch.tensor(label, dtype=torch.long)]
+        tensors = rearrange(
+            torch.nn.utils.rnn.pad_sequence(
+                [item.t() for item in tensors],
+                batch_first=True, padding_value=0.),
+            'b n c -> b c n')
+        tensors = aF.lowpass_biquad(
+            tensors, 
+            sample_rate=sample_rate, 
+            cutoff_freq=lowpass_hz)
+        tensors = aF.preemphasis(tensors)
+        tensors = aF.resample(
+            tensors, 
+            orig_freq=sample_rate, 
+            new_freq=new_sample_rate)
+        tensors = extract_mfcc(tensors)
+        delta1 = aF.compute_deltas(tensors)
+        delta2 = aF.compute_deltas(delta1)
+        tensors = torch.concat([tensors, delta1, delta2], dim=2)
+        targets = torch.stack(targets)
         return tensors, targets
     
 
