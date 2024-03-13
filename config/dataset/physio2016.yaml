@@ -1,0 +1,11 @@
+name: physio2016
+dataset_class: SplittedWaveformDataset
+root: physio2016/
+audio_dir: full_release/
+feature_dir: preprocessed/
+label_name: labels_binary
+feature_name: audio2k
+num_classes: 2
+label_values: [0, 1]
+classnames: [abnormal, normal]
+target_labels: [abnormal, normal]

@@ -14,7 +14,7 @@ class WaveformDataset(PickleDataset):
     def __init__(
             self, config: DatasetConfig, 
             data_dir: str = "data/",
-            max_feature_size: Optional[int]=1e5,
+            max_feature_size: Optional[int]=1e6,
             labels: Optional[Iterable[str]] = 
                 ['ang', 'neu', 'sad', 'hap'],
             sample_rate=16000):
@@ -174,10 +174,10 @@ class SplittedWaveformDataset(WaveformDataset):
     def __init__(
             self, config: DatasetConfig, 
             data_dir: str = "data/",
-            max_feature_size: Optional[int]=1e5,
+            max_feature_size: Optional[int]=1e6,
             labels: Optional[Iterable[str]] = 
                 ['murmur', 'normal'],
-            sample_rate=16000):
+            sample_rate=2000):
         super().__init__(
             config, data_dir, 
             max_feature_size, labels, 
@@ -188,8 +188,67 @@ class SplittedWaveformDataset(WaveformDataset):
         self.y_test = self.load_feature(self.config.label_name + '.test')
         self.x_train = self.load_feature(self.config.feature_name + '.train')
         self.x_test = self.load_feature(self.config.feature_name + '.test')
-        self.data_x = np.concatenate([self.x_train, self.x_test], axis=0)
-        self.data_y = np.concatenate([self.y_train, self.y_test], axis=0)
+
+    def quality_check(self):
+        y_label, y_encoded = np.unique(self.y_train), np.arange(self.num_classes)
+        assert np.array_equal(y_label, y_encoded), "y_train is not yet encoded"
+        assert len(self.x_train) > 0, "x_train is empty"
+        assert len(self.x_train) == len(self.y_train), "x_train and y_train must have the same size"
+
+        self.num_samples = len(self.y_train)
+        self.ensure_data_dim()   
+        self.ensure_data_size()
+
+    def ensure_data_dim(self):
+        # expected: data_x = [(num_channels, seq_length)]
+        if len(self.x_train[0].shape) == 1:
+            self.x_train = [d[None, :] for d in self.x_train]
+            self.x_test = [d[None, :] for d in self.x_test]
+        else:
+            dim0 = np.unique([d.shape[0] for d in self.x_train[:10]])
+            dim1 = np.unique([d.shape[1] for d in self.x_train[:10]])
+            assert min(dim0, dim1) == 1, "data_x must have the same number of channels"
+            if len(dim0) > 1: # [(seq_length, num_channels)]
+                self.x_train = [item.t() for item in self.x_train]    
+                self.x_test = [item.t() for item in self.x_test]    
+        self.feature_dim = self.x_train[0].shape[0]         
+
+    def ensure_data_size(self):
+        # trim data_x seq_length according to 
+        # max_feature_size vs (num_channels*seq_length)
+        if self.max_feature_size is not None:
+            _data = []
+            for d in self.x_train:
+                if d.shape[0] * d.shape[1] > self.max_feature_size:
+                    offset = (d.shape[0]- self.max_feature_size) // self.feature_dim // 2
+                    if offset > 0:
+                        d = d[:, offset:-offset]
+                _data += [d]
+            self.x_train = _data
+
+            _data = []
+            for d in self.x_test:
+                if d.shape[0] * d.shape[1] > self.max_feature_size:
+                    offset = (d.shape[0]- self.max_feature_size) // self.feature_dim // 2
+                    if offset > 0:
+                        d = d[:, offset:-offset]
+                _data += [d]
+            self.x_test = _data
+
+    def filter(self):
+        assert self.y_train is not None
+        filtered_idx = [self.label_filter(idx) for idx in self.y_train]
+        assert sum(filtered_idx) > 0, "empty data after filtered"
+        self.x_train = self.x_train[filtered_idx]
+        self.y_train = self.y_train[filtered_idx]
+        self.y_train = [self.update_label_index(idx) for idx in self.y_train]
+
+        assert self.y_test is not None
+        filtered_idx = [self.label_filter(idx) for idx in self.y_test]
+        assert sum(filtered_idx) > 0, "empty data after filtered"
+        self.x_test = self.x_test[filtered_idx]
+        self.y_test = self.y_test[filtered_idx]
+        self.y_test = [self.update_label_index(idx) for idx in self.y_test]
     
     def get_train_test_split(self):
         train_set = list(zip(self.x_train, self.y_train))

@@ -8,6 +8,7 @@ from einops import rearrange, reduce
 import torch.nn as nn
 import torchaudio
 from ..utils.config import get_optional_config_value
+import torch
 
 class M10(nn.Module):
     """
@@ -614,10 +615,6 @@ class M21(nn.Module):
             n_output = config.n_output
         self.n_input = n_input 
         self.n_output = n_output
-        self.downsample = torchaudio.transforms.Resample(
-            orig_freq=16000,
-            new_freq=2000
-        )
         self.fe_blocks = FeBlocks(
             n_input_channel = n_input, 
             n_block = config.fe.n_block,
@@ -632,7 +629,7 @@ class M21(nn.Module):
             window_func = config.fe.window_func,
             conv_mode=config.fe.conv_mode,
             norm_type=config.fe.norm_type,
-            residual_connection_type=config.fe.residual_connection_type,
+            residual_connection_type= None,
             pooling = None) # if pooling here, n_feature=1
         self.pooling = get_optional_config_value(self.config.fe.pooling)
         self.n_feature = self.fe_blocks.n_output_channel
@@ -645,11 +642,79 @@ class M21(nn.Module):
         )
 
     def forward(self, x):
-        x = self.downsample(x)
         x = self.fe_blocks(x)
         if self.pooling is not None:
             x = reduce(x, 'b c n -> b c', self.pooling)
         else: 
             x = rearrange(x, 'b c n -> b (c n)')
+        x = self.cls_head(x)
+        return x 
+    
+
+class M22(nn.Module):
+    """A classification model using 2 Sinc layers and 1DConv 
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+        self.fe1 = FeBlocks(
+            n_input_channel = n_input, 
+            n_block = config.fe1.n_block,
+            n_channel = config.fe1.n_channel, 
+            kernel_size = config.fe1.kernel_size, 
+            stride = config.fe1.stride, 
+            window_k = config.fe1.window_k,
+            filter_type = config.fe1.filter_type,
+            learnable_bands = config.fe1.learnable_bands,
+            learnable_windows = config.fe1.learnable_windows,
+            shared_window = config.fe1.shared_window,
+            window_func = config.fe1.window_func,
+            conv_mode=config.fe1.conv_mode,
+            norm_type=config.fe1.norm_type,
+            residual_connection_type= None,
+            pooling = None) # if pooling here, n_feature=1
+        self.fe2 = FeBlocks(
+            n_input_channel = n_input, 
+            n_block = config.fe2.n_block,
+            n_channel = config.fe2.n_channel, 
+            kernel_size = config.fe2.kernel_size, 
+            stride = config.fe2.stride, 
+            window_k = config.fe2.window_k,
+            filter_type = config.fe2.filter_type,
+            learnable_bands = config.fe2.learnable_bands,
+            learnable_windows = config.fe2.learnable_windows,
+            shared_window = config.fe2.shared_window,
+            window_func = config.fe2.window_func,
+            conv_mode=config.fe2.conv_mode,
+            norm_type=config.fe2.norm_type,
+            residual_connection_type= None,
+            pooling = None) # if pooling here, n_feature=1
+        self.pooling = get_optional_config_value(self.config.fe2.pooling)
+        self.n_feature = self.fe1.n_output_channel + self.fe2.n_output_channel
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            norm_type=config.cls.norm_type
+        )
+
+    def forward(self, x):
+        x = self.fe1(x)
+        x2 = self.fe2(rearrange(x, 'b c n -> b 1 (n c)'))
+        x = reduce(x, 'b c n -> b c', self.pooling)
+        x2 = reduce(x2, 'b c n -> b c', self.pooling)
+        x = torch.concat([x,x2], dim=-1)
         x = self.cls_head(x)
         return x 
