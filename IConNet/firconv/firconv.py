@@ -150,7 +150,7 @@ class FirConvLayer(nn.Module):
     def _lognorm_init(self, x: Tensor, mean=.1, std=.4, scale=.25):
         return x.log_normal_(mean=mean, std=std)*scale
 
-    def _mel_init_orig(self, n_filter, n_repeat, mel_resolution):
+    def _mel_init(self, n_filter, n_repeat, mel_resolution):
         low_bands, bandwidths = np.array([]), np.array([])
         _n_filter = n_filter // mel_resolution
         for i in range(mel_resolution):
@@ -162,40 +162,6 @@ class FirConvLayer(nn.Module):
             mel = np.linspace(to_mel(start_low_hz), 
                             to_mel(end_low_hz), _n_filter + 1)
             _low_bands = to_hz(mel) / new_sr
-            _bandwidths = np.diff(_low_bands)
-            low_bands = np.concatenate([low_bands, _low_bands[:_n_filter]])
-            bandwidths = np.concatenate([bandwidths, _bandwidths[:_n_filter]])
-        low_bands = repeat(
-            torch.tensor(low_bands, dtype=self.dtype), 
-            'h -> h c', 
-            c=n_repeat).contiguous()
-        bandwidths = repeat(
-            torch.tensor(bandwidths, dtype=self.dtype), 
-            'h -> h c', 
-            c=n_repeat).contiguous()
-        return low_bands, bandwidths
-    
-
-    def _mel_init(
-            self, 
-            n_filter,
-            n_repeat, 
-            mel_resolution=4,
-            n_filters_ratios =  [0.4, 0.4, 0.1, 0.1],
-            n_sr_ratios =  [0.5, 0.4, 0.2, 0.1]
-            ):
-        low_bands, bandwidths = np.array([]), np.array([])
-        n_filters_ratios = n_filters_ratios[:mel_resolution]
-        sum_ratios = sum(n_filters_ratios)
-        n_filters_ratios = [i/sum_ratios for i in n_filters_ratios]
-        n_filters = [int(i*n_filter) for i in n_filters_ratios[:-1]]
-        remaining_filters = n_filter - sum(n_filters)
-        n_filters += [remaining_filters]
-        mel_resolution = len(n_filters)
-        for i in range(mel_resolution):
-            _n_filter = n_filters[i]
-            end_low_band = self.sample_rate * n_sr_ratios[i]
-            _low_bands = np.linspace(0, end_low_band, _n_filter + 1)
             _bandwidths = np.diff(_low_bands)
             low_bands = np.concatenate([low_bands, _low_bands[:_n_filter]])
             bandwidths = np.concatenate([bandwidths, _bandwidths[:_n_filter]])
