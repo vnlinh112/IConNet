@@ -188,7 +188,7 @@ class FirConvLayer(nn.Module):
         n_filters_ratios = n_filters_ratios[:mel_resolution]
         sum_ratios = sum(n_filters_ratios)
         n_filters_ratios = [i/sum_ratios for i in n_filters_ratios]
-        n_filters = [i*n_filter for i in n_filters_ratios[:-1]]
+        n_filters = [int(i*n_filter) for i in n_filters_ratios[:-1]]
         remaining_filters = n_filter - sum(n_filters)
         n_filters += [remaining_filters]
         mel_resolution = len(n_filters)
