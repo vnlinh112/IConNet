@@ -59,11 +59,11 @@ class Seq2OneBlocks(nn.Module):
         self.n_block = n_block
         self.D = 1 + int(bidirectional)
         # only use cell state (long term memory), not hidden state
-        self.Cxt = 1 + int(use_context) * 1
+        self.Cxt = int(use_context)
         self.bidirectional = bidirectional
         self.pooling = pooling 
         self.use_context = use_context
-        self.n_out_feature = n_output_channel * self.D * self.Cxt * n_block
+        self.n_out_feature = self.D * n_output_channel * (n_block + self.Cxt)
     
     def forward(self, x):
         x, context = self.blocks(

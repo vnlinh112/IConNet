@@ -718,3 +718,164 @@ class M22(nn.Module):
         x = torch.concat([x,x2], dim=-1)
         x = self.cls_head(x)
         return x 
+    
+class M23(nn.Module):
+    """A classification model using 2 Sinc layers with 1DConv + LSTM
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+        self.fe1 = FeBlocks(
+            n_input_channel = n_input, 
+            n_block = config.fe1.n_block,
+            n_channel = config.fe1.n_channel, 
+            kernel_size = config.fe1.kernel_size, 
+            stride = config.fe1.stride, 
+            window_k = config.fe1.window_k,
+            filter_type = config.fe1.filter_type,
+            learnable_bands = config.fe1.learnable_bands,
+            learnable_windows = config.fe1.learnable_windows,
+            shared_window = config.fe1.shared_window,
+            window_func = config.fe1.window_func,
+            conv_mode=config.fe1.conv_mode,
+            norm_type=config.fe1.norm_type,
+            residual_connection_type= None,
+            pooling = None) # if pooling here, n_feature=1
+        self.fe2 = FeBlocks(
+            n_input_channel = 1, 
+            n_block = config.fe2.n_block,
+            n_channel = config.fe2.n_channel, 
+            kernel_size = config.fe2.kernel_size, 
+            stride = config.fe2.stride, 
+            window_k = config.fe2.window_k,
+            filter_type = config.fe2.filter_type,
+            learnable_bands = config.fe2.learnable_bands,
+            learnable_windows = config.fe2.learnable_windows,
+            shared_window = config.fe2.shared_window,
+            window_func = config.fe2.window_func,
+            conv_mode=config.fe2.conv_mode,
+            norm_type=config.fe2.norm_type,
+            residual_connection_type= None,
+            pooling = None) # if pooling here, n_feature=1
+        self.pooling = get_optional_config_value(self.config.fe2.pooling)
+        self.fe_n_feature = 2
+        self.seq_blocks = Seq2MBlocks(
+            n_block = config.seq.n_block,
+            n_input_channel = self.fe_n_feature,
+            n_output_channel = config.seq.n_channel,
+            use_context = config.seq.use_context,
+            bidirectional = config.seq.bidirectional,
+            out_seq_length = config.seq.out_seq_length 
+        )
+        self.n_feature = self.seq_blocks.n_out_feature
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            dropout = config.cls.dropout
+        )
+
+    def forward(self, x):
+        x1 = reduce(self.fe1(x), 'b c n -> b 1 c', 
+                self.config.fe1.pooling)
+        x  = rearrange(x, 'b c n -> b 1 (n c)')
+        x  = torch.concat([x, x1], dim=-1)
+        x  = reduce(self.fe2(x), 'b c n -> b 1 c', 
+                self.config.fe2.pooling)
+        x  = torch.concat([x1, x], dim=1)
+        x  = self.seq_blocks(x)
+        x  = self.cls_head(x)
+        return x 
+
+
+class M24(nn.Module):
+    """A classification model using 2 Sinc layers with 1DConv + LSTM
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+        self.fe1 = FeBlocks(
+            n_input_channel = n_input, 
+            n_block = config.fe1.n_block,
+            n_channel = config.fe1.n_channel, 
+            kernel_size = config.fe1.kernel_size, 
+            stride = config.fe1.stride, 
+            window_k = config.fe1.window_k,
+            filter_type = config.fe1.filter_type,
+            learnable_bands = config.fe1.learnable_bands,
+            learnable_windows = config.fe1.learnable_windows,
+            shared_window = config.fe1.shared_window,
+            window_func = config.fe1.window_func,
+            conv_mode=config.fe1.conv_mode,
+            norm_type=config.fe1.norm_type,
+            residual_connection_type= None,
+            pooling = None) # if pooling here, n_feature=1
+        self.fe2 = FeBlocks(
+            n_input_channel = 1, 
+            n_block = config.fe2.n_block,
+            n_channel = config.fe2.n_channel, 
+            kernel_size = config.fe2.kernel_size, 
+            stride = config.fe2.stride, 
+            window_k = config.fe2.window_k,
+            filter_type = config.fe2.filter_type,
+            learnable_bands = config.fe2.learnable_bands,
+            learnable_windows = config.fe2.learnable_windows,
+            shared_window = config.fe2.shared_window,
+            window_func = config.fe2.window_func,
+            conv_mode=config.fe2.conv_mode,
+            norm_type=config.fe2.norm_type,
+            residual_connection_type= None,
+            pooling = None) # if pooling here, n_feature=1
+        self.pooling = get_optional_config_value(self.config.fe2.pooling)
+        self.fe_n_feature = 2
+        self.seq_blocks = Seq2OneBlocks(
+            n_block = config.seq.n_block,
+            n_input_channel = self.fe_n_feature,
+            n_output_channel = config.seq.n_channel,
+            use_context = config.seq.use_context,
+            bidirectional = config.seq.bidirectional,
+            pooling=self.config.seq.pooling 
+        )
+        self.n_feature = self.seq_blocks.n_out_feature
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            dropout = config.cls.dropout
+        )
+
+    def forward(self, x):
+        x1 = reduce(self.fe1(x), 'b c n -> b 1 c', 
+                self.config.fe1.pooling)
+        x  = rearrange(x, 'b c n -> b 1 (n c)')
+        x  = torch.concat([x, x1], dim=-1)
+        x  = reduce(self.fe2(x), 'b c n -> b 1 c', 
+                self.config.fe2.pooling)
+        x  = torch.concat([x1, x], dim=1)
+        x  = self.seq_blocks(x)
+        x  = self.cls_head(x)
+        return x 

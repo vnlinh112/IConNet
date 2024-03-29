@@ -1,0 +1,45 @@
+name: M24
+description: FirConv for text classification
+fe1:
+  n_block: 1
+  n_channel: [128]
+  kernel_size: [64]
+  stride: [1]
+  window_k: [5] 
+  residual_connection_type: stack
+  pooling: max
+  filter_type: firwin
+  learnable_bands: True
+  learnable_windows: True
+  shared_window: False
+  window_func: hamming
+  mel_resolution: 2
+  conv_mode: fftconv
+  norm_type: LocalResponseNorm
+fe2:
+  n_block: 1
+  n_channel: [128]
+  kernel_size: [32]
+  stride: [1]
+  window_k: [9] 
+  residual_connection_type: stack
+  pooling: mean
+  filter_type: firwin
+  learnable_bands: True
+  learnable_windows: True
+  shared_window: False
+  window_func: hamming
+  mel_resolution: 2
+  conv_mode: fftconv
+  norm_type: LocalResponseNorm
+seq:
+  n_block: 2
+  n_channel: 64
+  use_context: True
+  bidirectional: False
+  pooling: mean
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'
+  dropout: 0.1

@@ -1,0 +1,46 @@
+name: M23
+description: FirConv for text classification
+fe1:
+  n_block: 1
+  n_channel: [128]
+  kernel_size: [128]
+  stride: [1]
+  window_k: [2] 
+  residual_connection_type: stack
+  pooling: max
+  filter_type: firwin
+  learnable_bands: True
+  learnable_windows: True
+  shared_window: False
+  window_func: hamming
+  mel_resolution: 4
+  conv_mode: conv
+  norm_type: LocalResponseNorm
+fe2:
+  n_block: 1
+  n_channel: [128]
+  kernel_size: [64]
+  stride: [1]
+  window_k: [9] 
+  residual_connection_type: stack
+  pooling: max
+  filter_type: firwin
+  learnable_bands: True
+  learnable_windows: True
+  shared_window: False
+  window_func: hamming
+  mel_resolution: 4
+  conv_mode: conv
+  norm_type: LocalResponseNorm
+seq:
+  n_block: 2
+  n_channel: 64
+  use_context: False
+  bidirectional: False
+  out_seq_length: 8
+  pooling: max
+cls:
+  n_block: 2 
+  n_hidden_dim: [256, 256]
+  norm_type: 'LayerNorm'
+  dropout: 0.1
