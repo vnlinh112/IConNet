@@ -1,7 +1,6 @@
 import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
-import numpy as np
 
 def acov_filter(
         data: Tensor, 
@@ -36,40 +35,42 @@ def acov_compute(
 class LocalPatternFilter(nn.Module):
     def __init__(
             self, 
-            n_filter: int, 
+            in_channels: int, 
+            out_channels: int, 
             kernel_size: int=1024) -> None:
         super().__init__()
-        self.n_filter = n_filter
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.kernel_size = kernel_size
-
-    def _generate_filters_positions(self, length):
-        positions = [torch.randint(length - self.kernel_size) for _ in range(self.n_filter)]
-        return torch.tensor(np.array(positions))
 
     @staticmethod
     def compute_autocovariance(
-        data: Tensor, 
-        positions: Tensor, 
-        kernel_size: int=1024) -> Tensor:
+            X: Tensor,
+            positions,
+            kernel_size) -> Tensor:
         acov = []
         for position in positions:
-            windowed_data = data[..., position:(position + kernel_size)]
+            windowed_data = X[..., position:(position + kernel_size)]
             max_windata = max(0, torch.max(torch.abs(windowed_data)))
             win = torch.hann_window(kernel_size)
             windowed_data = windowed_data * win / max_windata # normalize
             spectrum = torch.fft.rfft(windowed_data, n=2*kernel_size)**2
             acov += [torch.fft.ifftshift(torch.fft.irfft(spectrum.abs()))]
-        return torch.stack(acov)
+        return torch.stack(acov, dtype=X.dtype, device=X.device)
 
     def _generate_filters(self, X) -> Tensor:
         length = X.shape[-1]
-        positions = self._generate_filters_positions(length)
-        filters = self.compute_autocovariance(
-            X, positions, kernel_size=self.kernel_size)
+        positions = torch.linspace(
+            start=0, 
+            end=length - self.kernel_size,
+            steps=self.out_channels,
+            dtype=torch.int)
+        filters = self.compute_autocovariance(X, positions, self.kernel_size)
         return filters
     
     def forward(self, X: Tensor) -> Tensor:
         filters = self._generate_filters(X)
+        assert filters.shape == (self.out_channels, self.in_channels, self.kernel_size)
         X = F.conv1d(X, filters)
         return X
 
