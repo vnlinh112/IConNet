@@ -36,7 +36,7 @@ def zero_crossing_rate(
             kernel_size=n_fft, stride=stride),
         '... 1 t -> ... t')
     return zcrate
-    
+
 def samples_like(
     X: Tensor,
     sr: float = 16000,
@@ -55,6 +55,33 @@ def samples_like(
         time = repeat(time, 't -> b c t', b=b, c=c).contiguous()
     return time
 
+def zero_crossing_score(    
+    y: Tensor,
+    n_fft: int = 1024,
+    stride: int = 256
+) -> Tensor:
+    """Compute the zero-crossing score of an audio time series.
+
+    Returns
+    -------
+    zcr : np.ndarray [shape=(..., 1, t)]
+        ``zcr[..., 0, i]`` is the zero crossing score in frame ``i`` 
+        with score in range [0,1]
+    """
+    y = rearrange(y, '... (t n_fft) -> ... t n_fft', n_fft=n_fft)
+    crossings = rearrange(zero_crossings(y, dtype=torch.float), 
+                      '... t n_fft -> ... 1 (t n_fft)')
+    zcrate = rearrange(
+        nn.functional.avg_pool1d(
+            crossings, kernel_size=n_fft, stride=stride),
+        '... 1 t -> ... t')
+    nonzero_mean = rearrange(
+        nn.functional.avg_pool1d(
+            torch.where(crossings>0, crossings, 0.0), 
+            kernel_size=n_fft, stride=stride),
+        '... 1 t -> ... t')
+    score = torch.nn.functional.sigmoid(1 - 8*zcrate + 2*nonzero_mean)
+    return score
 
 def test(audio_file, quantiles = [0.6,0.8], n_fft=1024):
     y, sr = sf.read(audio_file)
