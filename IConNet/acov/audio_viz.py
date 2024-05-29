@@ -3,9 +3,10 @@ from librosa import display
 import IPython.display as ipd
 import numpy as np
 import matplotlib.pyplot as plt
-from .audio import AudioLibrosa
+from .audio import Audio, AudioLibrosa
 import warnings
 warnings.filterwarnings('ignore')
+from typing import Optional
 
 sr = 16000
 file_dir = "../data/"
@@ -33,7 +34,7 @@ def add_note(note):
     notes[note] = signal
     return play_and_visualize(y=signal, sr=sr, title=f"{note} {n:0.2f} Hz signal")
 
-def show_feature(audio, title="", expand=False):
+def show_feature(audio: Audio, title="", expand=False):
     print(title)
     
     n = 8
@@ -80,8 +81,15 @@ def show_feature(audio, title="", expand=False):
     audio.show_spectrogram(audio.cqt, y_axis='cqt_note', ax=axi[i], fig=fig, 
                            title='Constant-Q power spectrum', colorbar=expand) 
 
-def feature_librosa(filename="", y="", sr=sr, title="", file_dir=audio_dir, expand=False):
-    audio = AudioLibrosa(filename,y,sr,title,file_dir)
+def feature_librosa(
+        filename: Optional[str]=None, 
+        y: Optional[float]=None, sr=sr, title="", 
+        file_dir=audio_dir, expand=False):
+    if filename:
+        audio = AudioLibrosa(sr=sr,title=title)
+        audio.load(filename=filename, audio_dir=audio_dir)
+    else:
+        audio = AudioLibrosa(y=y, sr=sr, title=title)
     sr = audio.sr
     audio.extract_features()
     show_feature(audio, title, expand)

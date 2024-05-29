@@ -1,3 +1,4 @@
+from typing import Literal
 from .frontend import FeBlocks
 from .sequential import MambaSeq2OneBlocks
 from .classifier import Classifier

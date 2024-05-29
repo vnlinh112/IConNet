@@ -511,180 +511,6 @@ class EuclideanCodebook(nn.Module):
 
         return quantize, embed_ind, dist
 
-class CosineSimCodebook(nn.Module):
-    def __init__(
-        self,
-        dim,
-        codebook_size,
-        num_codebooks = 1,
-        kmeans_init = False,
-        kmeans_iters = 10,
-        sync_kmeans = True,
-        decay = 0.8,
-        eps = 1e-5,
-        threshold_ema_dead_code = 2,
-        reset_cluster_size = None,
-        use_ddp = False,
-        learnable_codebook = False,
-        gumbel_sample = gumbel_sample,
-        sample_codebook_temp = 1.,
-        ema_update = True
-    ):
-        super().__init__()
-        self.transform_input = l2norm
-
-        self.ema_update = ema_update
-        self.decay = decay
-
-        if not kmeans_init:
-            embed = l2norm(uniform_init(num_codebooks, codebook_size, dim))
-        else:
-            embed = torch.zeros(num_codebooks, codebook_size, dim)
-
-        self.codebook_size = codebook_size
-        self.num_codebooks = num_codebooks
-
-        self.kmeans_iters = kmeans_iters
-        self.eps = eps
-        self.threshold_ema_dead_code = threshold_ema_dead_code
-        self.reset_cluster_size = default(reset_cluster_size, threshold_ema_dead_code)
-
-        assert callable(gumbel_sample)
-        self.gumbel_sample = gumbel_sample
-        self.sample_codebook_temp = sample_codebook_temp
-
-        self.sample_fn = sample_vectors_distributed if use_ddp and sync_kmeans else batched_sample_vectors
-        self.kmeans_all_reduce_fn = distributed.all_reduce if use_ddp and sync_kmeans else noop
-        self.all_reduce_fn = distributed.all_reduce if use_ddp else noop
-
-        self.register_buffer('initted', torch.Tensor([not kmeans_init]))
-        self.register_buffer('cluster_size', torch.zeros(num_codebooks, codebook_size))
-        self.register_buffer('embed_avg', embed.clone())
-
-        self.learnable_codebook = learnable_codebook
-        if learnable_codebook:
-            self.embed = nn.Parameter(embed)
-        else:
-            self.register_buffer('embed', embed)
-
-    @torch.jit.ignore
-    def init_embed_(self, data, mask = None):
-        if self.initted:
-            return
-
-        if exists(mask):
-            c = data.shape[0]
-            data = rearrange(data[mask], '(c n) d -> c n d', c = c)
-
-        embed, cluster_size = kmeans(
-            data,
-            self.codebook_size,
-            self.kmeans_iters,
-            use_cosine_sim = True,
-            sample_fn = self.sample_fn,
-            all_reduce_fn = self.kmeans_all_reduce_fn
-        )
-
-        embed_sum = embed * rearrange(cluster_size, '... -> ... 1')
-
-        self.embed.data.copy_(embed)
-        self.embed_avg.data.copy_(embed_sum)
-        self.cluster_size.data.copy_(cluster_size)
-        self.initted.data.copy_(torch.Tensor([True]))
-
-    def replace(self, batch_samples, batch_mask):
-        batch_samples = l2norm(batch_samples)
-
-        for ind, (samples, mask) in enumerate(zip(batch_samples.unbind(dim = 0), batch_mask.unbind(dim = 0))):
-            if not torch.any(mask):
-                continue
-
-            sampled = self.sample_fn(rearrange(samples, '... -> 1 ...'), mask.sum().item())
-            sampled = rearrange(sampled, '1 ... -> ...')
-
-            self.embed.data[ind][mask] = sampled
-            self.embed_avg.data[ind][mask] = sampled * self.reset_cluster_size
-            self.cluster_size.data[ind][mask] = self.reset_cluster_size
-
-    def expire_codes_(self, batch_samples):
-        if self.threshold_ema_dead_code == 0:
-            return
-
-        expired_codes = self.cluster_size < self.threshold_ema_dead_code
-
-        if not torch.any(expired_codes):
-            return
-
-        batch_samples = rearrange(batch_samples, 'h ... d -> h (...) d')
-        self.replace(batch_samples, batch_mask = expired_codes)
-
-    @autocast(enabled = False)
-    def forward(
-        self,
-        x,
-        sample_codebook_temp = None,
-        mask = None,
-        freeze_codebook = False
-    ):
-        needs_codebook_dim = x.ndim < 4
-        sample_codebook_temp = default(sample_codebook_temp, self.sample_codebook_temp)
-
-        x = x.float()
-
-        if needs_codebook_dim:
-            x = rearrange(x, '... -> 1 ...')
-
-        dtype = x.dtype
-
-        flatten, ps = pack_one(x, 'h * d')
-
-        if exists(mask):
-            mask = repeat(mask, 'b n -> c (b h n)', c = flatten.shape[0], h = flatten.shape[-2] // (mask.shape[0] * mask.shape[1]))
-
-        self.init_embed_(flatten, mask = mask)
-
-        embed = self.embed if self.learnable_codebook else self.embed.detach()
-
-        dist = einsum('h n d, h c d -> h n c', flatten, embed)
-
-        embed_ind, embed_onehot = self.gumbel_sample(dist, dim = -1, temperature = sample_codebook_temp, training = self.training)
-        embed_ind = unpack_one(embed_ind, ps, 'h *')
-
-        if self.training:
-            unpacked_onehot = unpack_one(embed_onehot, ps, 'h * c')
-            quantize = einsum('h b n c, h c d -> h b n d', unpacked_onehot, embed)
-        else:
-            quantize = batched_embedding(embed_ind, embed)
-
-        if self.training and self.ema_update and not freeze_codebook:
-            if exists(mask):
-                embed_onehot[~mask] = 0.
-
-            bins = embed_onehot.sum(dim = 1)
-            self.all_reduce_fn(bins)
-
-            ema_inplace(self.cluster_size.data, bins, self.decay)
-
-            embed_sum = einsum('h n d, h n c -> h c d', flatten, embed_onehot)
-            embed_sum = embed_sum.contiguous()
-            self.all_reduce_fn(embed_sum)
-
-            ema_inplace(self.embed_avg.data, embed_sum, self.decay)
-
-            cluster_size = laplace_smoothing(self.cluster_size, self.codebook_size, self.eps) * self.cluster_size.sum(dim = -1, keepdim = True)
-
-            embed_normalized = self.embed_avg / rearrange(cluster_size, '... -> ... 1')
-            embed_normalized = l2norm(embed_normalized)
-
-            self.embed.data.copy_(l2norm(embed_normalized))
-            self.expire_codes_(x)
-
-        if needs_codebook_dim:
-            quantize, embed_ind = map(lambda t: rearrange(t, '1 ... -> ...'), (quantize, embed_ind))
-
-        dist = unpack_one(dist, ps, 'h * d')
-        return quantize, embed_ind, dist
-
 # main class
 
 class VectorQuantize(nn.Module):
@@ -693,18 +519,13 @@ class VectorQuantize(nn.Module):
         dim,
         codebook_size,
         codebook_dim = None,
-        heads = 1,
-        separate_codebook_per_head = False,
         decay = 0.8,
         eps = 1e-5,
         freeze_codebook = False,
         kmeans_init = False,
         kmeans_iters = 10,
         sync_kmeans = True,
-        use_cosine_sim = False,
         threshold_ema_dead_code = 0,
-        channel_last = True,
-        accept_image_fmap = False,
         commitment_weight = 1.,
         commitment_use_cross_entropy_loss = False,
         orthogonal_reg_weight = 0.,
@@ -714,7 +535,6 @@ class VectorQuantize(nn.Module):
         sample_codebook_temp = 1.,
         straight_through = False,
         reinmax = False,  # using reinmax for improved straight-through, assuming straight through helps at all
-        sync_codebook = None,
         sync_affine_param = False,
         ema_update = True,
         learnable_codebook = False,
@@ -722,15 +542,12 @@ class VectorQuantize(nn.Module):
         affine_param = False,
         affine_param_batch_decay = 0.99,
         affine_param_codebook_decay = 0.9,
-        sync_update_v = 0. # the v that controls optimistic vs pessimistic update for synchronous update rule (21) https://minyoungg.github.io/vqtorch/assets/draft_050523.pdf
     ):
         super().__init__()
         self.dim = dim
-        self.heads = heads
-        self.separate_codebook_per_head = separate_codebook_per_head
-
+        self.heads = 1
         codebook_dim = default(codebook_dim, dim)
-        codebook_input_dim = codebook_dim * heads
+        codebook_input_dim = codebook_dim * self.heads
 
         requires_projection = codebook_input_dim != dim
         self.project_in = nn.Linear(dim, codebook_input_dim) if requires_projection else nn.Identity()
@@ -751,13 +568,7 @@ class VectorQuantize(nn.Module):
         self.orthogonal_reg_max_codes = orthogonal_reg_max_codes
 
         assert not (ema_update and learnable_codebook), 'learnable codebook not compatible with EMA update'
-
-        assert 0 <= sync_update_v <= 1.
-        assert not (sync_update_v > 0. and not learnable_codebook), 'learnable codebook must be turned on'
-
-        self.sync_update_v = sync_update_v
-
-        codebook_class = EuclideanCodebook if not use_cosine_sim else CosineSimCodebook
+        codebook_class = EuclideanCodebook 
 
         gumbel_sample_fn = partial(
             gumbel_sample,
@@ -771,7 +582,7 @@ class VectorQuantize(nn.Module):
 
         codebook_kwargs = dict(
             dim = codebook_dim,
-            num_codebooks = heads if separate_codebook_per_head else 1,
+            num_codebooks = 1,
             codebook_size = codebook_size,
             kmeans_init = kmeans_init,
             kmeans_iters = kmeans_iters,
@@ -787,7 +598,6 @@ class VectorQuantize(nn.Module):
         )
 
         if affine_param:
-            assert not use_cosine_sim, 'affine param is only compatible with euclidean codebook'
             codebook_kwargs = dict(
                 **codebook_kwargs,
                 affine_param = True,
@@ -802,45 +612,18 @@ class VectorQuantize(nn.Module):
 
         self.codebook_size = codebook_size
 
-        self.accept_image_fmap = accept_image_fmap
-        self.channel_last = channel_last
-
     @property
     def codebook(self):
         codebook = self._codebook.embed
-
-        if self.separate_codebook_per_head:
-            return codebook
-
         return rearrange(codebook, '1 ... -> ...')
 
     @codebook.setter
     def codebook(self, codes):
-        if not self.separate_codebook_per_head:
-            codes = rearrange(codes, '... -> 1 ...')
-
         self._codebook.embed.copy_(codes)
 
     def get_codes_from_indices(self, indices):
         codebook = self.codebook
-        is_multiheaded = codebook.ndim > 2
-
-        if not is_multiheaded:
-            codes = codebook[indices]
-        else:
-            indices, ps = pack_one(indices, 'b * h')
-            indices = rearrange(indices, 'b n h -> b h n')
-
-            indices = repeat(indices, 'b h n -> b h n d', d = codebook.shape[-1])
-            codebook = repeat(codebook, 'h n d -> b h n d', b = indices.shape[0])
-
-            codes = codebook.gather(2, indices)
-            codes = rearrange(codes, 'b h n d -> b n (h d)')
-            codes = unpack_one(codes, ps, 'b * d')
-
-        if not self.channel_last:
-            codes = rearrange(codes, 'b ... d -> b d ...')
-
+        codes = codebook[indices]
         return codes
 
     def get_output_from_indices(self, indices):
@@ -863,29 +646,13 @@ class VectorQuantize(nn.Module):
             assert not exists(mask)
             x = rearrange(x, 'b d -> b 1 d')
 
-        shape, device, heads, is_multiheaded, codebook_size, return_loss = x.shape, x.device, self.heads, self.heads > 1, self.codebook_size, exists(indices)
-
-        need_transpose = not self.channel_last and not self.accept_image_fmap
+        return_loss =  exists(indices)
+        shape, device,  = x.shape, x.device
         should_inplace_optimize = exists(self.in_place_codebook_optimizer)
 
-        # rearrange inputs
-
-        if self.accept_image_fmap:
-            height, width = x.shape[-2:]
-            x = rearrange(x, 'b c h w -> b (h w) c')
-
-        if need_transpose:
-            x = rearrange(x, 'b d n -> b n d')
 
         # project input
-
         x = self.project_in(x)
-
-        # handle multi-headed separate codebooks
-
-        if is_multiheaded:
-            ein_rhs_eq = 'h b n d' if self.separate_codebook_per_head else '1 (b h) n d'
-            x = rearrange(x, f'b n (h d) -> {ein_rhs_eq}', h = heads)
 
         # l2norm for cosine sim, otherwise identity
 
@@ -911,9 +678,6 @@ class VectorQuantize(nn.Module):
                 loss = F.mse_loss(quantize, x.detach(), reduction = 'none')
 
                 loss_mask = mask
-                if is_multiheaded:
-                    loss_mask = repeat(mask, 'b n -> c (b h) n', c = loss.shape[0], h = loss.shape[1] // mask.shape[0])
-
                 loss = loss[loss_mask].mean()
 
             else:
@@ -934,24 +698,13 @@ class VectorQuantize(nn.Module):
             commit_quantize = maybe_detach(quantize)            
 
             # straight through
-
             quantize = x + (quantize - x).detach()
-
-            if self.sync_update_v > 0.:
-                # (21) in https://minyoungg.github.io/vqtorch/assets/draft_050523.pdf
-                quantize = quantize + self.sync_update_v * (quantize - quantize.detach())
 
         # function for calculating cross entropy loss to distance matrix
         # used for (1) naturalspeech2 training residual vq latents to be close to the correct codes and (2) cross-entropy based commitment loss
 
         def calculate_ce_loss(codes):
-            if not is_multiheaded:
-                dist_einops_eq = '1 b n l -> b l n'
-            elif self.separate_codebook_per_head:
-                dist_einops_eq = 'c b n l -> b l n c'
-            else:
-                dist_einops_eq = '1 (b h) n l -> b l n h'
-
+            dist_einops_eq = '1 (b h) n l -> b l n h'
             ce_loss = F.cross_entropy(
                 rearrange(distances, dist_einops_eq, b = shape[0]),
                 codes,
@@ -967,15 +720,6 @@ class VectorQuantize(nn.Module):
 
         # transform embedding indices
 
-        if is_multiheaded:
-            if self.separate_codebook_per_head:
-                embed_ind = rearrange(embed_ind, 'h b n -> b n h', h = heads)
-            else:
-                embed_ind = rearrange(embed_ind, '1 (b h) n -> b n h', h = heads)
-
-        if self.accept_image_fmap:
-            embed_ind = rearrange(embed_ind, 'b (h w) ... -> b h w ...', h = height, w = width)
-
         if only_one:
             embed_ind = rearrange(embed_ind, 'b 1 ... -> b ...')
 
@@ -988,9 +732,6 @@ class VectorQuantize(nn.Module):
                 if self.commitment_use_cross_entropy_loss:
                     if exists(mask):
                         ce_loss_mask = mask
-                        if is_multiheaded:
-                            ce_loss_mask = repeat(ce_loss_mask, 'b n -> b n h', h = heads)
-
                         embed_ind.masked_fill_(~ce_loss_mask, -1)
 
                     commit_loss = calculate_ce_loss(embed_ind)
@@ -1000,9 +741,6 @@ class VectorQuantize(nn.Module):
                         commit_loss = F.mse_loss(commit_quantize, x, reduction = 'none')
 
                         loss_mask = mask
-                        if is_multiheaded:
-                            loss_mask = repeat(loss_mask, 'b n -> c (b h) n', c = commit_loss.shape[0], h = commit_loss.shape[1] // mask.shape[0])
-
                         commit_loss = commit_loss[loss_mask].mean()
                     else:
                         commit_loss = F.mse_loss(commit_quantize, x)
@@ -1015,7 +753,6 @@ class VectorQuantize(nn.Module):
                 # only calculate orthogonal loss for the activated codes for this batch
 
                 if self.orthogonal_reg_active_codes_only:
-                    assert not (is_multiheaded and self.separate_codebook_per_head), 'orthogonal regularization for only active codes not compatible with multi-headed with separate codebooks yet'
                     unique_code_ids = torch.unique(embed_ind)
                     codebook = codebook[:, unique_code_ids]
 
@@ -1028,25 +765,11 @@ class VectorQuantize(nn.Module):
                 orthogonal_reg_loss = orthogonal_loss_fn(codebook)
                 loss = loss + orthogonal_reg_loss * self.orthogonal_reg_weight
 
-        # handle multi-headed quantized embeddings
-
-        if is_multiheaded:
-            if self.separate_codebook_per_head:
-                quantize = rearrange(quantize, 'h b n d -> b n (h d)', h = heads)
-            else:
-                quantize = rearrange(quantize, '1 (b h) n d -> b n (h d)', h = heads)
-
         # project out
 
         quantize = self.project_out(quantize)
 
         # rearrange quantized embeddings
-
-        if need_transpose:
-            quantize = rearrange(quantize, 'b n d -> b d n')
-
-        if self.accept_image_fmap:
-            quantize = rearrange(quantize, 'b (h w) c -> b c h w', h = height, w = width)
 
         if only_one:
             quantize = rearrange(quantize, 'b 1 d -> b d')
@@ -1061,3 +784,84 @@ class VectorQuantize(nn.Module):
             )
 
         return quantize, embed_ind, loss
+    
+
+
+class SimpleVectorQuantize(nn.Module):
+    def __init__(
+        self,
+        codebook_dim,
+        codebook_size,
+        eps = 1e-5,
+        commitment_weight = 1.,
+        learnable_codebook = True,
+        in_place_codebook_optimizer: Callable[..., Optimizer] = None, # Optimizer used to update the codebook embedding if using learnable_codebook
+
+    ):
+        super().__init__()
+        self.codebook_dim = codebook_dim
+        self.codebook_size = codebook_size
+        self.eps = eps
+        self.commitment_weight = commitment_weight
+        self.learnable_codebook = learnable_codebook
+
+        self._codebook = nn.Embedding(
+            embedding_dim = codebook_dim,
+            num_embeddings = codebook_size
+        )
+
+        self.in_place_codebook_optimizer = in_place_codebook_optimizer(self._codebook.parameters()) if exists(in_place_codebook_optimizer) else None
+        
+
+    @property
+    def codebook(self):
+        codebook = self._codebook.embed
+        return rearrange(codebook, '1 ... -> ...')
+
+    @codebook.setter
+    def codebook(self, codes):
+        self._codebook.embed.copy_(codes)
+
+    def get_codes_from_indices(self, indices):
+        codebook = self.codebook
+        codes = codebook[indices]
+        return codes
+
+    def get_output_from_indices(self, indices):
+        codes = self.get_codes_from_indices(indices)
+        return codes
+
+    def forward(self, x):
+        x = rearrange(x, 'b n d -> b n d')
+        device = x.device
+        should_inplace_optimize = exists(self.in_place_codebook_optimizer)
+
+        # quantize
+        quantize, embed_ind, distances = self._codebook(x)
+
+        # one step in-place update
+        if should_inplace_optimize and self.training:
+            loss = F.mse_loss(quantize, x.detach())
+            loss.backward()
+            self.in_place_codebook_optimizer.step()
+            self.in_place_codebook_optimizer.zero_grad()
+
+            # quantize again
+            quantize, embed_ind, distances = self._codebook(x)
+
+        if self.training:
+            # determine code to use for commitment loss
+            maybe_detach = torch.detach if not self.learnable_codebook else identity
+            commit_quantize = maybe_detach(quantize)            
+            quantize = x + (quantize - x).detach()
+
+        # aggregate loss
+        loss = torch.tensor([0.], device=device, requires_grad=self.training)
+
+        if self.training:
+            if self.commitment_weight > 0:
+                commit_loss = F.mse_loss(commit_quantize, x)
+                loss = loss + commit_loss * self.commitment_weight
+
+        return quantize, embed_ind, loss
+    

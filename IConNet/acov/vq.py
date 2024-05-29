@@ -56,58 +56,65 @@ class VectorQuantizer(nn.Module):
         return loss, quantized, perplexity
     
 
-from .vqt import VectorQuantize
+from .vqt import SimpleVectorQuantize
 from einops import pack
 
-class RandomProjectionQuantizer(nn.Module):
+class VQuantizer(nn.Module):
     """ https://arxiv.org/abs/2202.01855 """
 
     def __init__(
         self,
-        *,
-        dim,
-        codebook_size,
         codebook_dim,
-        num_codebooks = 1,
-        norm = True,
-        **kwargs
+        codebook_size,
+        norm = True
     ):
         super().__init__()
-        self.num_codebooks = num_codebooks
+        self.norm = nn.LayerNorm(
+            codebook_dim, 
+            elementwise_affine=False) if norm else nn.Identity()
+        
+        self.vq = SimpleVectorQuantize(codebook_dim, codebook_size)
 
-        rand_projs = torch.empty(num_codebooks, dim, codebook_dim)
-        nn.init.xavier_normal_(rand_projs)
-
-        self.register_buffer('rand_projs', rand_projs)
-
-        # in section 3 of https://arxiv.org/abs/2202.01855
-        # "The input data is normalized to have 0 mean and standard deviation of 1 ... to prevent collapse"
-
-        self.norm = nn.LayerNorm(dim, elementwise_affine = False) if norm else nn.Identity()
-
-        self.vq = VectorQuantize(
-            dim = codebook_dim * num_codebooks,
-            heads = num_codebooks,
-            codebook_size = codebook_size,
-            use_cosine_sim = True,
-            separate_codebook_per_head = True,
-            **kwargs
-        )
-
-    def forward(
-        self,
-        x,
-        indices = None
-    ):
-        return_loss = indices is not None
-
+    def forward(self, x):
         x = self.norm(x)
-        x = torch.einsum('b n d, h d e -> b n h e', x, self.rand_projs)
-        x, ps = pack([x], 'b n *')
-        self.vq.eval()
         quantized, indices, loss = self.vq(x, indices = indices)
+        return quantized, indices, loss
 
-        if return_loss:
-            return loss
+def test():    
+    quantizer = VQuantizer(
+        codebook_dim = 256,      # codebook dimension
+        codebook_size = 4096     # codebook size
+    )
+    x = torch.randn(16, 62, 1024)
+    quantized, indices, loss = quantizer(x) 
+    assert quantized.shape == (16, 62) # (16, 62) - (batch, seq)
+    return quantized, indices, loss
 
-        return indices
+
+class SimpleVectorQuantize(nn.Module):
+    def __init__(
+        self,
+        codebook_dim,
+        codebook_size,
+        eps = 1e-5,
+        commitment_weight = 1.,
+        learnable_codebook = True
+    ):
+        super().__init__()
+        self.codebook_dim = codebook_dim
+        self.codebook_size = codebook_size
+        self.eps = eps
+        self.commitment_weight = commitment_weight
+        self.learnable_codebook = learnable_codebook
+
+        self.codebook = nn.Embedding(
+            embedding_dim = codebook_dim,
+            num_embeddings = codebook_size
+        )        
+
+    def forward(self, x):
+        x = rearrange(x, 'b n d -> b n d')
+        quantize, embed_ind, distances = self.codebook(x)
+        loss = F.mse_loss(quantize, x) * self.commitment_weight         
+        quantize = x + (quantize - x).detach()
+        return quantize, embed_ind, loss
