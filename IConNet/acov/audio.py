@@ -146,7 +146,7 @@ class AudioLibrosa(Audio):
 
     def get_melspectrogram(self):
         self.melspectrogram = librosa.feature.melspectrogram(
-            S=self.spectrogram**2, sr=self.sr)
+            S=self.spectrogram**2, sr=self.sr, n_mels=self.n_mels)
         return self.melspectrogram
 
     def get_mfcc(self):

@@ -6,6 +6,7 @@ import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
 from functools import partial
+from einops import rearrange, repeat, reduce
 
 import librosa
 from librosa import display
@@ -98,6 +99,39 @@ def get_embedding_color(
         [torch.full_like(score, 0.5), score, score], 
         dim=-1).numpy()
     return color, score
+
+def get_embedding_color_v2(
+        y: Tensor, mask_ratio=0.2, score_offset=0.5) -> Tensor:
+    y /= repeat(reduce(y, 'b n -> b' , 'max'), 'b -> b n', n=1)
+    crossings = zero_crossings(y, dtype=torch.float)
+    zcrate = crossings.mean(dim=-1)
+    length = y.shape[-1]
+    mid_q = length//4   # length//16 * 5
+    crossings_mid = crossings[:, mid_q:-mid_q]
+    nonzero_mean = torch.where(
+        crossings>0, crossings, 0.0).mean(dim=-1)
+    nonzero_mean_mid = torch.where(
+        crossings_mid>0, crossings_mid, 0.0).mean(dim=-1)
+    kernel_size = (length + 1) // 8
+    y_pos_avg = F.avg_pool1d(
+        torch.clamp(y, min=0), 
+        kernel_size=kernel_size, stride=kernel_size)
+    emb_data_cond = torch.diff(y_pos_avg) > 0
+    cond1 = emb_data_cond[:, 1:3].sum(dim=-1) == 2
+    cond2 = emb_data_cond[:, -2:].sum(dim=-1) == 0
+    cond3 = y_pos_avg[:, 3] - y_pos_avg[:, -1] > 0
+    cond4 = y_pos_avg[:, 4] - y_pos_avg[:, 0] > 0
+    emb_data_mask = cond1 * cond2 * cond3 * cond4
+    score0 = F.sigmoid(1 - 8*zcrate + nonzero_mean + nonzero_mean_mid)
+    score1 = mask_ratio * emb_data_mask
+    score = score0 + score1*(1-score0) - score_offset
+    score_sig = torch.clamp(
+        F.softplus(score, beta=40.0, threshold=0.5)*10, max=1)
+    color = torch.stack(
+        [torch.full_like(score, 0.5), score_sig, score_sig], 
+        dim=-1).numpy()
+    return color, score
+
 
 def visualize_embedding_umap(
     data, colors, edgecolors="black",
