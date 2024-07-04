@@ -7,6 +7,7 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 from functools import partial
 from einops import rearrange, repeat, reduce
+from typing import Optional, Literal, Iterable, Union
 
 import librosa
 from librosa import display
@@ -15,16 +16,23 @@ import seaborn as sns
 import umap
 sns.set_theme(style="dark")
 
-from .zero_crossing import zero_crossings
+from .zero_crossing import zero_crossings, zero_crossing_score_chunks_v3
 from .audio import AudioLibrosa
 
 from matplotlib import ticker
 sr = 16000
 
 def visualize_speech_codebook(
-        waves, colors="blue", title="", 
-        expand=False, n=16):
+        waves: Iterable, 
+        colors: Optional[Iterable]=None, 
+        title="", 
+        expand=False, 
+        n=16,
+        feature_mel=True,
+        feature_player=False,
+        default_color: Optional[str]="auto"):
     print(title)
+    players = []
     if expand:
         ncols = 4
         fig, ax = plt.subplots(
@@ -37,20 +45,38 @@ def visualize_speech_codebook(
             figsize=(6*ncols, 5*n//ncols))
     axi = ax.ravel()    
     i = 0
-    for x, y in enumerate(waves[:n//2]):
-        if type(colors) == str:
-            color = colors
-        else:
-            color = colors[x]
+    
+    if feature_mel:
+        num_codes = n//2
+        win_length = 256
+    else:
+        num_codes = n
+        win_length = 512
+    for x, y in enumerate(waves[:num_codes]):
+        
         audio = AudioLibrosa(
-            y=y, sr=sr, title=f"Embedding {x}",
-            win_length=256,
+            y=y, sr=sr, title=x,
+            win_length=win_length,
+            hop_length=win_length//2,
             n_mels=64, n_mfcc=13,
             features_f0=True,
-            features_fft=True,
-            features_player=False, 
-            features_cqt=False)
+            features_fft=feature_mel,
+            features_player=feature_player, 
+            features_cqt=False,
+            center=False)
         audio.extract_features()
+        if feature_player:
+            players.append(audio.player)
+
+        if colors is None or len(colors) < 0:
+            color = default_color
+        else:
+            color = colors[x]
+        
+        if color is None:
+            c1 = np.max(audio.voiced_probs)*0.5 + 0.5
+            c2 = max(1, min(0.5, 1 - np.max(audio.f0) / 3000))
+            color = (0.5,c2*c1,c1)
         
         img = display.waveshow(
             audio.y, sr=sr, ax=axi[i], color=color)
@@ -58,24 +84,25 @@ def visualize_speech_codebook(
         axi[i].set(xlabel=None)
         axi[i].xaxis.set_major_formatter(
             ticker.StrMethodFormatter("{x:.2f}"))
-    
         i += 1
-        audio.show_spectrogram(
-            audio.melspectrogram, 
-            convert_db='power', y_axis='mel', 
-            ax=axi[i], fig=fig, 
-            title='Melspectrogram & F0', 
-            colorbar=expand)  
-        times = librosa.times_like(audio.f0, sr=audio.sr)
-        axi[i].plot(
-            times, audio.f0, 
-            label='F0', color='cyan', linewidth=4)
-        axi[i].legend(loc='upper right')
-        axi[i].set(xlabel=None)
-        axi[i].xaxis.set_major_formatter(
-            ticker.StrMethodFormatter("{x:.2f}"))
-        i += 1
+
+        if feature_mel:
+            audio.show_spectrogram(
+                audio.melspectrogram, 
+                convert_db='power', y_axis='mel', 
+                ax=axi[i], fig=fig, 
+                title='Melspectrogram & F0', 
+                colorbar=expand)  
+            audio.show_f0(ax=axi[i])
+            axi[i].set(xlabel=None)
+            axi[i].xaxis.set_major_formatter(
+                ticker.StrMethodFormatter("{x:.2f}"))
+            
+            i += 1
     axi[i-1].set(xlabel="Time")
+    if feature_player:
+        return players
+
 
 def get_embedding_color(    
     y: Tensor,
@@ -102,35 +129,27 @@ def get_embedding_color(
 
 def get_embedding_color_v2(
         y: Tensor, mask_ratio=0.2, score_offset=0.5) -> Tensor:
-    y /= repeat(reduce(y, 'b n -> b' , 'max'), 'b -> b n', n=1)
-    crossings = zero_crossings(y, dtype=torch.float)
-    zcrate = crossings.mean(dim=-1)
-    length = y.shape[-1]
-    mid_q = length//4   # length//16 * 5
-    crossings_mid = crossings[:, mid_q:-mid_q]
-    nonzero_mean = torch.where(
-        crossings>0, crossings, 0.0).mean(dim=-1)
-    nonzero_mean_mid = torch.where(
-        crossings_mid>0, crossings_mid, 0.0).mean(dim=-1)
-    kernel_size = (length + 1) // 8
-    y_pos_avg = F.avg_pool1d(
-        torch.clamp(y, min=0), 
-        kernel_size=kernel_size, stride=kernel_size)
-    emb_data_cond = torch.diff(y_pos_avg) > 0
-    cond1 = emb_data_cond[:, 1:3].sum(dim=-1) == 2
-    cond2 = emb_data_cond[:, -2:].sum(dim=-1) == 0
-    cond3 = y_pos_avg[:, 3] - y_pos_avg[:, -1] > 0
-    cond4 = y_pos_avg[:, 4] - y_pos_avg[:, 0] > 0
-    emb_data_mask = cond1 * cond2 * cond3 * cond4
-    score0 = F.sigmoid(1 - 8*zcrate + nonzero_mean + nonzero_mean_mid)
-    score1 = mask_ratio * emb_data_mask
-    score = score0 + score1*(1-score0) - score_offset
-    score_sig = torch.clamp(
-        F.softplus(score, beta=40.0, threshold=0.5)*10, max=1)
+    score = zero_crossing_score_chunks_v3(
+        y, mask_ratio=mask_ratio, score_offset=score_offset)
     color = torch.stack(
-        [torch.full_like(score, 0.5), score_sig, score_sig], 
+        [torch.full_like(score, 0.5), score, score], 
         dim=-1).numpy()
     return color, score
+
+def get_zcs_color(zcs: Tensor):
+    score_sig = F.sigmoid(zcs)
+    color = torch.stack(
+        [1-score_sig, torch.full_like(zcs, 0.5), score_sig], 
+        dim=-1).numpy()
+    return color
+
+def get_zcs_color_v2(zcs: Tensor):
+    score_sig = torch.clamp(
+        F.softplus(zcs, beta=40.0, threshold=0.5)*10, max=1)
+    color = torch.stack(
+        [1-score_sig, torch.full_like(zcs, 0.5), score_sig], 
+        dim=-1).numpy()
+    return color
 
 
 def visualize_embedding_umap(
@@ -204,3 +223,5 @@ def visualize_training_curves(
     ax.plot(train_perplexity)
     ax.set_title('Avg. codebook usage')
     ax.set_xlabel('iteration')
+
+

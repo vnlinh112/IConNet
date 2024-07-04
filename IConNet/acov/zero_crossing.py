@@ -2,7 +2,7 @@ import soundfile as sf
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
-from einops import rearrange, repeat
+from einops import rearrange, repeat, reduce
 from typing import Optional, Literal, Union
 
 def zero_crossings(y: Tensor, dtype=None) -> Tensor:
@@ -68,6 +68,87 @@ def zero_crossing_score(
         '... 1 t -> ... t')
     score = F.sigmoid(1 - 8*zcrate + 2*nonzero_mean)
     return score
+
+def zero_crossing_score_chunks(
+        y: Tensor, mask_ratio=0.2, score_offset=0.5) -> Tensor:
+    """
+    If no symmetry constraint: set `mask_ratio=0` and `score_offset=0`
+    """
+    y /= repeat(reduce(y, 'b n -> b' , 'max'), 'b -> b n', n=1)
+    crossings = zero_crossings(y, dtype=torch.float)
+    zcrate = crossings.mean(dim=-1)
+    length = y.shape[-1]
+    mid_q = length//4   # length//16 * 5
+    crossings_mid = crossings[:, mid_q:-mid_q]
+    nonzero_mean = torch.clamp(crossings, min=0).mean(dim=-1)
+    nonzero_mean_mid = torch.clamp(crossings_mid, min=0).mean(dim=-1)
+    kernel_size = (length + 1) // 8
+    y_pos_avg = F.avg_pool1d(
+        torch.clamp(y, min=0), 
+        kernel_size=kernel_size, stride=kernel_size)
+    emb_data_cond = torch.diff(y_pos_avg) > 0
+    cond1 = emb_data_cond[:, 1:3].sum(dim=-1) == 2
+    cond2 = emb_data_cond[:, -2:].sum(dim=-1) == 0
+    cond3 = y_pos_avg[:, 3] - y_pos_avg[:, -1] > 0
+    cond4 = y_pos_avg[:, 4] - y_pos_avg[:, 0] > 0
+    emb_data_mask = cond1 * cond2 * cond3 * cond4
+    score0 = F.sigmoid(1 - 8*zcrate + nonzero_mean + nonzero_mean_mid)
+    score1 = mask_ratio * emb_data_mask
+    score = score0 + score1*(1-score0) - score_offset
+    return score
+
+def zero_crossing_score_chunks_v2(
+        y: Tensor, mask_ratio=0.2, score_offset=0.5) -> Tensor:
+    """
+    If no symmetry constraint: set `mask_ratio=0` and `score_offset=0`
+    """
+    y /= repeat(reduce(y, 'b n -> b' , 'max'), 'b -> b n', n=1)
+    crossings = zero_crossings(y, dtype=torch.float)
+    zcrate = crossings.mean(dim=-1)
+    length = y.shape[-1]
+    mid_q = length//4   # length//16 * 5
+    nonzero_mean = torch.clamp(y, min=0).mean(dim=-1)
+    nonzero_mean_mid = torch.clamp(y[:, mid_q:-mid_q], min=0).mean(dim=-1)
+    kernel_size = (length + 1) // 8
+    y_pos_avg = F.avg_pool1d(
+        torch.clamp(y, min=0), 
+        kernel_size=kernel_size, stride=kernel_size)
+    emb_data_cond = torch.diff(y_pos_avg) > 0
+    cond1 = emb_data_cond[:, 1:3].sum(dim=-1) == 2
+    cond2 = emb_data_cond[:, -2:].sum(dim=-1) == 0
+    cond3 = y_pos_avg[:, 3] - y_pos_avg[:, -1] > 0
+    cond4 = y_pos_avg[:, 4] - y_pos_avg[:, 0] > 0
+    emb_data_mask = cond1 * cond2 * cond3 * cond4
+    score0 = F.sigmoid(1 - 8*zcrate + nonzero_mean + nonzero_mean_mid)
+    score1 = mask_ratio * emb_data_mask
+    score = score0 + score1*(1-score0) - score_offset
+    return score
+
+def zero_crossing_score_chunks_v3(
+        y: Tensor, mask_ratio=0.2, score_offset=0.5) -> Tensor:
+    """
+    If no symmetry constraint: set `mask_ratio=0` and `score_offset=0`
+    """
+    y /= repeat(reduce(y, 'b n -> b' , 'max'), 'b -> b n', n=1)
+    crossings = zero_crossings(y, dtype=torch.float)
+    zcrate = crossings.mean(dim=-1)
+    length = y.shape[-1]
+    y_pos = torch.clamp(y, min=0)
+    nonzero_mean = y_pos.mean(dim=-1)
+    kernel_size = (length + 1) // 8
+    y_pos_avg = F.avg_pool1d(
+        y_pos, kernel_size=kernel_size, stride=kernel_size)
+    emb_data_cond = torch.diff(y_pos_avg) > 0
+    cond1 = emb_data_cond[:, 1:3].sum(dim=-1) == 2
+    cond2 = emb_data_cond[:, -2:].sum(dim=-1) == 0
+    cond3 = y_pos_avg[:, 3] - y_pos_avg[:, -1] > 0
+    cond4 = y_pos_avg[:, 4] - y_pos_avg[:, 0] > 0
+    emb_data_mask = cond1 * cond2 * cond3 * cond4
+    score_zc = 1 - 8*zcrate + nonzero_mean/5
+    score0 = F.sigmoid(score_zc)
+    score = score0*emb_data_mask
+    return score
+
     
 def samples_like(
     X: Tensor,

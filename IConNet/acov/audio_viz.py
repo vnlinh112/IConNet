@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 from .audio import Audio, AudioLibrosa
 import warnings
 warnings.filterwarnings('ignore')
-from typing import Optional
+from typing import Optional, Iterable
+import torch 
+from torch import Tensor
 
 sr = 16000
 file_dir = "../data/"
@@ -68,7 +70,7 @@ def show_feature(audio: Audio, title="", expand=False):
     i += 1
     audio.show_spectrogram(audio.spectrogram, y_axis='log', ax=axi[i], fig=fig, 
                            title='Log-frequency power spectrogram & F0', colorbar=expand)
-    times = librosa.times_like(audio.f0, sr=audio.sr)
+    times = audio.times_like(audio.f0)
     axi[i].plot(times, audio.f0, label='F0', color='cyan', linewidth=2)
     axi[i].legend(loc='upper right')
     
@@ -80,6 +82,7 @@ def show_feature(audio: Audio, title="", expand=False):
     i += 1
     audio.show_spectrogram(audio.cqt, y_axis='cqt_note', ax=axi[i], fig=fig, 
                            title='Constant-Q power spectrum', colorbar=expand) 
+    
 
 def feature_librosa(
         filename: Optional[str]=None, 
@@ -95,3 +98,72 @@ def feature_librosa(
     show_feature(audio, title, expand)
     return audio.player
 
+
+def show_feature_v2(
+        audio: Audio, title_prefix="", expand=False,
+        normalize: bool=True):
+    n = 4
+    if expand:
+        fig, ax = plt.subplots(ncols=2, nrows=n//2, figsize=(8*2, 5*n//2))
+    else:
+        fig, ax = plt.subplots(ncols=4, nrows=n//4, figsize=(6*n, 4))
+        
+    axi = ax.ravel()    
+    
+    i = 0
+    if normalize:
+        y = audio.y / audio.y.max()
+    else:
+        y = audio.y
+    img = display.waveshow(y, sr=sr, ax=axi[i], color="blue")
+    axi[i].set(title=f'{title_prefix}Wave')
+
+    
+    i += 1
+    mel_db = librosa.power_to_db(audio.melspectrogram, ref=np.max)
+    audio.show_spectrogram(mel_db, convert_db=False, y_axis='mel', ax=axi[i], fig=fig, 
+                           title=f'{title_prefix}Mel', colorbar=expand)  
+    
+    i += 1
+    audio.show_spectrogram(audio.cqt, y_axis='cqt_note', ax=axi[i], fig=fig, 
+                           title=f'{title_prefix}CQT', colorbar=expand) 
+    times = audio.times_like(audio.f0)
+    axi[i].plot(times, audio.f0, label='F0', color='cyan', linewidth=2)
+    axi[i].legend(loc='upper right')
+    
+    i += 1
+    audio.show_spectrogram(audio.chromagram, convert_db=False, 
+                           y_axis='chroma', ax=axi[i], fig=fig, 
+                           title=f'{title_prefix}Chroma', colorbar=expand)
+    
+def display_audio_list(
+        audio_list: Iterable,
+        indices: Optional[Iterable] = None,
+        title_prefix: str="Audio ", 
+        win_length: int=2048,
+        sr: int=16000,
+        normalize: bool=True):
+    if indices is None or len(indices) == 0:
+        indices = range(len(audio_list))
+    players = []
+    for i in indices:
+        title = f'{title_prefix}{i}'
+        au = AudioLibrosa(
+            y=audio_list[i], 
+            sr=sr,
+            title=title,
+            win_length=win_length,
+            center=False
+        )
+        au.extract_features()
+        print(title)
+        show_feature_v2(au, normalize=normalize, title_prefix=f'{title}: ')
+        players.append(au.player)
+    return players
+
+def compute_pitch(emb, sr=16000, n_fft=1024):
+    if type(emb) != Tensor:
+        emb = torch.tensor(emb, dtype=float)
+    fft2 = torch.fft.rfft(emb, n=n_fft).type(torch.float)**2
+    delta_hz = sr/n_fft
+    return torch.argmax(fft2) * delta_hz
