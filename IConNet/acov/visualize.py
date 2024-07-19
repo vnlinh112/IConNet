@@ -30,8 +30,10 @@ def visualize_speech_codebook(
         n=16,
         feature_mel=True,
         feature_player=False,
-        default_color: Optional[str]="auto"):
-    print(title)
+        default_color: Optional[str]=None,
+        figsize_unit=(6,5),
+        ncols=8,
+        return_plot=False):
     players = []
     if expand:
         ncols = 4
@@ -39,10 +41,9 @@ def visualize_speech_codebook(
             ncols=ncols, nrows=n//ncols, 
             figsize=(8*ncols, 5*n//ncols))
     else:
-        ncols = 8
         fig, ax = plt.subplots(
             ncols=ncols, nrows=n//ncols, 
-            figsize=(6*ncols, 5*n//ncols))
+            figsize=(figsize_unit[0]*ncols, figsize_unit[1]*n//ncols))
     axi = ax.ravel()    
     i = 0
     
@@ -55,7 +56,7 @@ def visualize_speech_codebook(
     for x, y in enumerate(waves[:num_codes]):
         
         audio = AudioLibrosa(
-            y=y, sr=sr, title=x,
+            y=y, sr=sr, title=f"{title}{x}",
             win_length=win_length,
             hop_length=win_length//2,
             n_mels=64, n_mfcc=13,
@@ -102,6 +103,8 @@ def visualize_speech_codebook(
     axi[i-1].set(xlabel="Time")
     if feature_player:
         return players
+    if return_plot:
+        return (fig, ax)
 
 
 def get_embedding_color(    

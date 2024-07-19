@@ -62,3 +62,27 @@ def collate_fn(batch, max_duration_in_second=3, sample_rate=sr):
     tensors = pad_sequence(tensors)
     targets = torch.stack(targets)
     return tensors, targets
+
+def collate_fn_with_mask(batch, max_duration_in_second=10, sample_rate=sr):
+        tensors, targets = [], []
+        # Gather in lists, and encode labels as indices
+        for feature, label in batch:
+            if max_duration_in_second is not None:
+                feature = np.array(feature, dtype=float).squeeze()
+                length = len(feature)
+                max_length = sample_rate * max_duration_in_second
+                offset = max(0, (length - max_length) // 2)
+                feature = feature[offset: length-offset]
+            tensors += [torch.tensor(feature, dtype=torch.float32)[None,:]]
+            targets += [torch.tensor(label, dtype=torch.long)]
+
+        # Group the list of tensors into a batched tensor
+        # Make all tensor in a batch the same length by padding with zeros
+        mask_tensors = torch.nn.utils.rnn.pad_sequence(
+                [torch.ones_like(item.t()) for item in tensors],
+                batch_first=True, padding_value=0.).t()
+        tensors = torch.nn.utils.rnn.pad_sequence(
+                [item.t() for item in tensors],
+                batch_first=True, padding_value=0.).t()
+        targets = torch.stack(targets)
+        return tensors, targets, mask_tensors

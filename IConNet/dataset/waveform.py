@@ -10,14 +10,15 @@ from torchaudio import functional as aF
 from functools import partial
 import torchaudio
 
+from .dataset import DEFAULTS
+
 class WaveformDataset(PickleDataset):
     def __init__(
             self, config: DatasetConfig, 
-            data_dir: str = "data/",
-            max_feature_size: Optional[int]=1e6,
-            labels: Optional[Iterable[str]] = 
-                ['ang', 'neu', 'sad', 'hap'],
-            sample_rate=16000):
+            data_dir: str=DEFAULTS['data_dir'],
+            max_feature_size: Optional[int]=DEFAULTS['max_feature_size'],
+            labels: Optional[Iterable[str]]=DEFAULTS['labels'],
+            sample_rate: int=DEFAULTS['labels']):
         super().__init__(config, data_dir)
         if labels is not None:
             self.labels = labels
@@ -102,8 +103,8 @@ class WaveformDataset(PickleDataset):
 
     def get_train_test_split(self):
         x_train, x_test, y_train, y_test = train_test_split(
-            self.data_x, self.data_y, test_size=0.2, 
-            random_state=42, stratify=self.data_y)
+            self.data_x, self.data_y, test_size=DEFAULTS['test_size'], 
+            random_state=DEFAULTS['random_state'], stratify=self.data_y)
         train_set = list(zip(x_train, y_train))
         test_set = list(zip(x_test, y_test))
         return train_set, test_set
@@ -112,11 +113,10 @@ class WaveformDataset(PickleDataset):
 class Waveform2mfccDataset(WaveformDataset):
     def __init__(
             self, config: DatasetConfig, 
-            data_dir: str = "data/",
-            max_feature_size: Optional[int]=1e5,
-            labels: Optional[Iterable[str]] = 
-                ['murmur', 'normal'],
-            sample_rate=16000):
+            data_dir: str=DEFAULTS['data_dir'],
+            max_feature_size: Optional[int]=DEFAULTS['max_feature_size_heart'],
+            labels: Optional[Iterable[str]]=DEFAULTS['labels_heart'],
+            sample_rate: int=DEFAULTS['sample_rate']):
         super().__init__(
             config, data_dir, 
             max_feature_size, labels, 
@@ -173,11 +173,10 @@ class Waveform2mfccDataset(WaveformDataset):
 class SplittedWaveformDataset(WaveformDataset):
     def __init__(
             self, config: DatasetConfig, 
-            data_dir: str = "data/",
-            max_feature_size: Optional[int]=1e6,
-            labels: Optional[Iterable[str]] = 
-                ['murmur', 'normal'],
-            sample_rate=2000):
+            data_dir: str=DEFAULTS['data_dir'],
+            max_feature_size: Optional[int]=DEFAULTS['max_feature_size'],
+            labels: Optional[Iterable[str]]=DEFAULTS['labels_heart'],
+            sample_rate: int=DEFAULTS['sample_rate_heart']):
         super().__init__(
             config, data_dir, 
             max_feature_size, labels, 

@@ -32,7 +32,7 @@ def acov_compute(
     acov = torch.fft.ifftshift(torch.fft.irfft(spectrum.abs()))
     return acov
 
-class LocalPatternFilter(nn.Module):
+class SimpleLocalPatternFilter(nn.Module):
     def __init__(
             self, 
             in_channels: int, 
