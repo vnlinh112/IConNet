@@ -118,6 +118,9 @@ class Audio:
         return librosa.frames_to_time(
             y, sr=self.sr, hop_length=self.hop_length, n_fft=self.n_fft)
     
+    def samples_to_time(self, y):
+        return librosa.samples_to_time(y, sr=self.sr)
+    
     def get_chromagram(self):
         self.chromagram = librosa.feature.chroma_cens(
             C=self.cqt, sr=self.sr,

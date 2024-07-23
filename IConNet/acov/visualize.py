@@ -33,7 +33,9 @@ def visualize_speech_codebook(
         default_color: Optional[str]=None,
         figsize_unit=(6,5),
         ncols=8,
-        return_plot=False):
+        return_plot=False,
+        waveplot_librosa=True,
+        y_formatter=None):
     players = []
     if expand:
         ncols = 4
@@ -79,8 +81,15 @@ def visualize_speech_codebook(
             c2 = max(1, min(0.5, 1 - np.max(audio.f0) / 3000))
             color = (0.5,c2*c1,c1)
         
-        img = display.waveshow(
-            audio.y, sr=sr, ax=axi[i], color=color)
+        if waveplot_librosa:
+            img = display.waveshow(
+                audio.y, sr=sr, ax=axi[i], color=color)
+        else:
+            times = audio.samples_to_time(audio.y)
+            axi[i].plot(audio.y, color=color)
+            if y_formatter:
+                axi[i].yaxis.set_major_formatter(
+                    ticker.StrMethodFormatter(y_formatter))
         axi[i].set(title=audio.title)
         axi[i].set(xlabel=None)
         axi[i].xaxis.set_major_formatter(
