@@ -16,7 +16,7 @@ class AudioMutualInfo(nn.Module):
         stride: int=500,
         downsampling: int=8, 
         rho_value: float=10.,
-        envelope_type: Literal['hann', 'mean']='hann',
+        envelope_type: Literal['mean']='mean',
     ):
         super().__init__()
         self.kernel_size = kernel_size
@@ -35,13 +35,9 @@ class AudioMutualInfo(nn.Module):
         Output: envelope [0.,1.] shape=(B C N//stride)
         '''
         eps = torch.finfo(X.dtype).eps
-        if self.envelope_type == 'hann':
-            c = X.shape[1]
-            window = repeat(self.window, 'k -> c h k', c=c, h=c)
-            env = F.conv1d(X.abs(), window, stride=self.stride)
-        else:
-            env = F.avg_pool1d(X.abs(), kernel_size=self.kernel_size, 
-                               stride=self.stride)
+        env = F.avg_pool1d(
+            X.abs(), kernel_size=self.kernel_size, 
+            stride=self.stride)
         env = env / torch.clamp(env.amax(dim=-1, keepdim=True), min=eps)
         return env
         
