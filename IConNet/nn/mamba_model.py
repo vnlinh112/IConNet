@@ -1,6 +1,5 @@
 from typing import Literal
 from .frontend import FeBlocks
-from .sequential import MambaSeq2OneBlocks
 from .classifier import Classifier
 import torch.nn as nn
 from einops import rearrange, reduce
@@ -19,6 +18,8 @@ class MambaSeq2OneBlocks(nn.Module):
             state_expansion_factor: int=2,
             block_expansion_factor: int=2,
             ):
+        super().__init__()
+        
         self.n_block = n_block
         self.n_input_channel = n_input_channel
         self.n_output_channel = n_output_channel

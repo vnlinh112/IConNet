@@ -62,7 +62,7 @@ def visualize_speech_codebook(
             win_length=win_length,
             hop_length=win_length//2,
             n_mels=64, n_mfcc=13,
-            features_f0=True,
+            features_f0=feature_mel,
             features_fft=feature_mel,
             features_player=feature_player, 
             features_cqt=False,

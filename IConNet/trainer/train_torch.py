@@ -17,14 +17,16 @@ from torchmetrics.classification import (
 )
 from torchmetrics import MetricCollection
 from pprint import pprint
-from typing import Iterable
+from typing import Iterable, Union, Optional
 from .model_wrapper import ModelWrapper
 from .data_torch import SimpleDataModule as DataModule
 from torch.utils.data import random_split, DataLoader
 from ..utils.config import DatasetConfig
 from ..dataset import DEFAULTS
 from ..acov.model import SCB8 as SCB
+from ..acov.model import SCB10
 from ..acov.audio_vqvae import VqVaeLoss, VqVaeClsLoss
+from ..acov.audio_vqmix import AudioVQMixClsLoss
 
 class Trainer:
     def __init__(
@@ -58,7 +60,7 @@ class Trainer:
             self, 
             train_loader: DataLoader, 
             test_loader: DataLoader,
-            loss_ratio: VqVaeClsLoss,
+            loss_ratio: Union[VqVaeClsLoss, AudioVQMixClsLoss],
             eval_loader=None,
             batch_size=None,
         ):
@@ -78,12 +80,12 @@ class Trainer:
         self.loss_ratio = loss_ratio
 
 
-    def setup(self, model: SCB, lr=1e-3):
+    def setup(self, model: Union[SCB, SCB10], lr=1e-3):
         self.lr = lr
         self.model = model
         
         self.train_losses = []
-        self.train_losses_detail: list[VqVaeClsLoss] = []
+        self.train_losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
         self.test_accuracy = []
         self.optimizer = optim.RAdam(self.model.parameters(), lr=lr)
     
@@ -123,20 +125,23 @@ class Trainer:
             nn.utils.clip_grad.clip_grad_norm_(
                 self.model.parameters(), self.gradient_clip_val)
             
-    def compute_loss(self, losses_detail: list[VqVaeClsLoss]) -> tuple[Tensor, VqVaeClsLoss]:
+    def compute_loss(
+            self, losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]]
+        ) -> tuple[Tensor, Union[VqVaeClsLoss, AudioVQMixClsLoss]]:
         values = []
         loss = torch.tensor(0., requires_grad=True)
-        for key in VqVaeClsLoss._fields:
+        loss_type = type(losses_detail[0])
+        for key in loss_type._fields:
             v = torch.stack([getattr(ld, key) for ld in losses_detail]).mean()
             loss = loss + v * getattr(self.loss_ratio, key)
             values.append(v.item())
-        loss_detail = VqVaeClsLoss(*values)
+        loss_detail = loss_type(*values)
         return loss, loss_detail
 
     def train_step(self):
         device = self.device
         self.model.train()
-        losses_detail: list[VqVaeClsLoss] = []
+        losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
         for batch_idx, (data, target) in enumerate(self.train_loader):
             _mem_before = torch.cuda.memory_allocated()
             data = data.to(device)
@@ -187,13 +192,13 @@ class Trainer:
         message += f" [{', '.join(values)}]\t"
         return message
 
-    def log_eval(self, loss, acc, message, result_dict):
+    def log_eval(self, loss, acc, message, result_dict=None):
         print(message)
         suffix = f"epoch={self.current_epoch}.step={self.current_step}."
         suffix += f"loss={loss:.3f}.val_acc={acc:.3f}.pt"
-        result_path = f"{self.log_dir}val_result.{suffix}"
-
-        torch.save(result_dict, result_path)
+        if result_dict is not None:
+            result_path = f"{self.log_dir}val_result.{suffix}"
+            torch.save(result_dict, result_path)
         if acc > self.best_accuracy:
             self.best_epoch = self.current_epoch
             self.best_accuracy = acc 
@@ -201,8 +206,6 @@ class Trainer:
             torch.save(self.model.state_dict(), model_path)
             self.best_model_path = model_path
             print(f"Saved new best model: {self.best_model_path}")
-            
-    # TODO: log csv (skip?)
 
     @torch.no_grad
     def eval_step(self, loss, message):
@@ -339,6 +342,97 @@ class Trainer:
             self.model.load_state_dict(torch.load(self.best_model_path))
         else:
             print('best_model_path not found')
+
+
+class Trainer_SCB10(Trainer):
+    def __init__(
+            self, 
+            # config: DatasetConfig, 
+            batch_size, log_dir, experiment_prefix, device,
+            eval_ratio: float=0.2,
+            gradient_clip_val: float=0,
+            accumulate_grad_batches: int=1,
+
+    ):
+        super().__init__(
+            batch_size, log_dir, experiment_prefix, 
+            device, eval_ratio, gradient_clip_val, accumulate_grad_batches
+        )
+
+    def train_step(self):
+        device = self.device
+        self.model.train()
+        losses_detail: list[AudioVQMixClsLoss] = []
+        for batch_idx, (data, target) in enumerate(self.train_loader):
+            _mem_before = torch.cuda.memory_allocated()
+            data = data.to(device)
+            target = target.to(device)
+            logits, loss_detail = self.model.train_cls(data, target)
+            del data
+            gc.collect()
+            torch.cuda.empty_cache()
+            losses_detail.append(loss_detail)
+            _mem_during = torch.cuda.memory_allocated()
+            del target
+            gc.collect()
+            torch.cuda.empty_cache()
+
+            if batch_idx % self.accumulate_grad_batches:
+                self.optimizer.zero_grad()
+                loss, loss_detail = self.compute_loss(losses_detail)
+                loss.backward()
+                self.clip_gradient()
+                self.optimizer.step()
+                _mem_after = torch.cuda.memory_allocated()
+                self.current_step += 1
+
+                loss = loss.item()
+                self.train_losses.append(loss)
+                self.train_losses_detail.append(loss_detail)
+
+                losses_detail = []
+                if batch_idx % self.val_check_batches == 0: 
+                    message = self.gen_log_message(
+                        batch_idx, loss, loss_detail,
+                        memory=(_mem_before, _mem_during, _mem_after)
+                    )    
+                    self.eval_step(loss=loss, message=message)
+            self._update_progress_bar()
+
+    @torch.no_grad
+    def eval_step(self, loss, message):
+        device = self.device
+        self.model.eval()
+        self.model = self.model.to(device)
+        correct = 0
+        total = 0
+
+        if self.eval_loader is not None:
+            data_loader = self.eval_loader
+            n_iter = len(data_loader)
+        else:
+            data_loader = self.test_loader
+            n_iter = int(len(data_loader) * self.eval_ratio)
+        data_generator = iter(data_loader)
+        for i in range(n_iter):
+            data, target = next(data_generator)
+            total += len(target)
+            data = data.to(device)
+            target = target.to(device)
+            preds, _ = self.model.predict(data)
+            is_correct = preds.eq(target).detach().cpu()
+            correct += sum(is_correct).item()
+            del data, target
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        acc = correct / total
+        message += f"Val_acc: {correct}/{total} ({100.*acc:.2f}%)\n"
+        self.log_eval(
+            loss=loss, acc=acc, 
+            message=message)
+
+
 
 def get_dataloader(config: DatasetConfig, data_dir, batch_size=None):
     data = DataModule(config, data_dir, batch_size=batch_size)

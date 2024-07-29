@@ -177,6 +177,7 @@ class LocalPatternFilter(nn.Module):
                     kernel_size=self.kernel_size,
                     pad_mode='zero')
         self.utils = LocalPatterns
+        self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
 
     def _generate_filters_idx(self, X: Tensor) -> Tensor:
         n_positions = self.out_channels

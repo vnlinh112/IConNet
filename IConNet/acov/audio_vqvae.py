@@ -28,9 +28,9 @@ class VectorQuantizer(nn.Module):
     """
     def __init__(
         self, 
-        num_embeddings, 
-        embedding_dim, 
-        commitment_cost,
+        num_embeddings: int, 
+        embedding_dim: int, 
+        commitment_cost: float=0.1,
         distance_type: Literal['euclidean', 'dot']='euclidean'
     ):
         super().__init__()
@@ -45,12 +45,12 @@ class VectorQuantizer(nn.Module):
         self.distance_type = distance_type
         window = torch.hann_window(self.embedding_dim)
         self.register_buffer("window", window)
+        self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
 
     def transform_freq(self, embedding: Tensor) -> Tensor:
-        eps = torch.finfo(embedding.dtype).eps
         freq = nl_relu(torch.fft.rfft(self.window * embedding, 
-                                      n=self.embedding_dim).real**2)
-        freq = freq / torch.clamp(freq.amax(dim=-1, keepdim=True), min=eps)
+                                      n=self.embedding_dim+1).real**2)[..., 1:]
+        freq = self.norm_fn(freq)
         return freq
 
     def get_nearest_neighbour(self, X_flatten: Tensor) -> Tensor:
@@ -59,13 +59,12 @@ class VectorQuantizer(nn.Module):
             X_flatten_freq = self.transform_freq(X_flatten)
             embedding_freq = self.transform_freq(self.embedding.weight)
             dot_similarity = X_flatten_freq @ embedding_freq.T 
-            distances = 1 - dot_similarity / X_flatten_freq.size(-1)
+            distances = 1 - dot_similarity / X_flatten_freq.shape[-1]
         else: # euclidean            
-            distances = (torch.sum(X_flatten**2, dim=1, keepdim=True)
+            distances = (torch.sum(X_flatten**2, dim=-1, keepdim=True)
                     + torch.sum(self.embedding.weight**2, dim=1)
                     - 2 * torch.matmul(X_flatten, self.embedding.weight.t()))
-            
-        encoding_indices = torch.argmin(distances, dim=1, keepdim=True)
+        encoding_indices = torch.argmin(distances, dim=-1, keepdim=True)
         return encoding_indices
     
     def quantize(self, X: Tensor) -> Tensor:
@@ -85,7 +84,8 @@ class VectorQuantizer(nn.Module):
         return vq_loss
 
     def forward(self, X: Tensor) -> tuple[Tensor, Tensor, VqLoss]:
-        X = rearrange(X, 'b h c k -> b h c k', k=self.embedding_dim)
+        assert X.shape[-1] == self.embedding_dim, f'Expect input last dim={self.embedding_dim}, got {X.shape[-1]} instead'
+        assert X.ndim == 3 or X.ndim == 4
 
         X_flatten = X.view(-1, self.embedding_dim)
         encoding_indices = self.get_nearest_neighbour(X_flatten)
@@ -98,6 +98,8 @@ class VectorQuantizer(nn.Module):
                       loss_vq=self.compute_vq_loss(quantized, X))
         # reparametrization trick
         quantized = X + (quantized - X).detach()
+        encoding_indices = rearrange(
+            encoding_indices, '(b n) 1 -> b n', b=X.shape[0])
         return quantized, encoding_indices, loss
     
 
