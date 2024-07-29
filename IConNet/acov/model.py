@@ -7,7 +7,6 @@ from einops import reduce, rearrange, repeat
 from ..nn.mamba import FeedForward
 from ..nn.mamba_model import MambaSeq2OneBlocks
 from .audio_vqmix import AudioVQEncoder, AudioVQMixClsLoss
-from ..nn.classifier import Classifier
 
 
 class SCB8(nn.Module):
@@ -142,19 +141,10 @@ class SCB10(nn.Module):
             block_expansion_factor=2,
         )
 
-        # self.cls_head = Classifier(
-        #     n_input = embedding_dim,
-        #     n_output = num_classes,
-        #     n_block = 1, 
-        #     n_hidden_dim = (cls_dim,),
-        #     dropout = 0.1
-        # )
-
         self.linear_projection = nn.Linear(
             self.embedding_dim, self.cls_dim)
         self.ffn = FeedForward(self.cls_dim)
         self.ln1 = nn.LayerNorm(self.cls_dim)
-        # self.ln2 = nn.LayerNorm(self.cls_dim)
         self.cls_head = nn.Linear(
             self.cls_dim, num_classes)
 
@@ -164,7 +154,6 @@ class SCB10(nn.Module):
         
         tokens, loss = self.audio_encoder.encode(X)
         Z = self.seq_encoder(rearrange(tokens, 'b n c -> b c n'))
-        # logits = self.cls_head(Z)
         Z = self.linear_projection(Z)
         Z = self.ffn(self.ln1(Z))
         logits = self.cls_head(Z)

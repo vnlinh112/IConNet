@@ -6,6 +6,7 @@ from ..nn.activation import gumbel_softmax
 from ..conv.pad import PadForConv
 from .zero_crossing import zero_crossings, zero_crossing_score, samples_like
 from einops import reduce, rearrange, repeat
+from .loss import AudioMutualInfoMask, AudioMutualInfo
 
 class LocalPatterns(nn.Module):
     def __init__(self):
@@ -234,3 +235,70 @@ class FilterEnhance(nn.Module):
         filters = rearrange(filters, 'b h c n -> (b h) c n', c=1)
         X_outs = F.conv1d(X, filters, padding='same')
         return X_outs
+    
+
+class SpeechSegmentSelector(nn.Module):
+    def __init__(
+            self, 
+            in_channels: int, 
+            kernel_size: int=1023,
+            stride: int=128,
+            max_num_tokens: int=2048
+        ) -> None:
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size 
+        self.stride = stride
+        self.max_num_tokens = max_num_tokens
+
+        self.ami = AudioMutualInfo(
+            kernel_size=512, stride=250, downsampling=8)
+        self.mutual_information = self.ami.mutual_information
+        self.compute_probs = self.ami.compute_probs
+        self.utils = LocalPatterns
+        self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
+        self.pad_fn = PadForConv(kernel_size=self.stride, pad_mode='zero')
+
+    
+    def _extract_all_filters(self, X: Tensor) -> Tensor:
+        if self.stride == self.kernel_size:
+            filters = rearrange(
+                self.pad_fn(X), 'b c (h kz) -> b h c kz', 
+                kz=self.kernel_size, c=1)
+        else:
+            X_pad = self.pad_fn(X)
+            n_filters = X_pad.shape[-1] // self.stride
+            X_pad = F.pad(X_pad, pad=(0, self.kernel_size*2), mode='constant', value=0)
+            filters_positions = torch.arange(n_filters) * self.stride
+            filters = [X_pad[..., p:p+self.kernel_size] for p in filters_positions]
+            filters = rearrange(torch.stack(filters, dim=2), 'b c h kz -> b h c kz')        
+        filters = self.utils.autocovariance(filters)
+        filters = self.norm_fn(filters)
+        return filters
+
+    def compute_segment_score(
+            self, x: Tensor, filters: Tensor, hard: bool=True) -> Tensor:
+        X = x[None, ...]
+        X_filtered = F.conv1d(X, filters, padding='same')  # b h n
+        X_filtered = self.norm_fn(X_filtered)
+        if hard==True:
+            px = self.compute_probs(X)
+            px_cz = self.compute_probs(X_filtered)
+            out = reduce(px.ge(px_cz), 'b h n -> b h', 'all')
+        else:
+            out, (_, _) = self.mutual_information(X_filtered, X)
+        return out
+
+    def _generate_filters(self, X: Tensor) -> Tensor:
+        X = self.norm_fn(X)
+        filters = self._extract_all_filters(X)
+        segment_mask = torch.concat(
+            [self.compute_segment_score(x, filters[i]) for i, x in enumerate(X)], 
+            dim=0)
+        filters = torch.einsum('bhcn,bh->bhn', filters, segment_mask)
+        # filters = rearrange(filters, 'b h c n -> b (c h) n', c=1)
+        return filters
+
+    def forward(self, X: Tensor) -> Tensor: 
+        filters = self._generate_filters(X)
+        return filters

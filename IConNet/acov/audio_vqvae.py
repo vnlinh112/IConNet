@@ -158,10 +158,12 @@ class AudioVqVae(nn.Module):
             downsampling=self.downsampling,
             loss_type='overlap', reduction=None
         )
-        self.mutual_info_mask = AudioMutualInfoMask(
-            kernel_size=self.kernel_size, 
-            stride=self.stride,
-            downsampling=self.downsampling)
+        self.projector_mask = False 
+        if self.projector_mask:
+            self.mutual_info_mask = AudioMutualInfoMask(
+                kernel_size=self.kernel_size, 
+                stride=self.stride,
+                downsampling=self.downsampling)
         
     @property
     def embedding_filters(self) -> Tensor:
@@ -177,8 +179,9 @@ class AudioVqVae(nn.Module):
             self.embedding_filters,
             'h n -> h c n', c=self.in_channels)
         X_filtered = F.conv1d(X, filters, padding='same')
-        embedding_mask = self.mutual_info_mask(X_filtered, X)
-        X_filtered = torch.einsum('bhn,bh->bhn', X_filtered, embedding_mask)
+        if self.projector_mask:
+            embedding_mask = self.mutual_info_mask(X_filtered, X)
+            X_filtered = torch.einsum('bhn,bh->bhn', X_filtered, embedding_mask)
         X_filtered = self.downsample(X_filtered)
         return X_filtered
     
