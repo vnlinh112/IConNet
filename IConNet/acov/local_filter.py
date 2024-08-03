@@ -7,6 +7,7 @@ from ..conv.pad import PadForConv
 from .zero_crossing import zero_crossings, zero_crossing_score, samples_like
 from einops import reduce, rearrange, repeat
 from .loss import AudioMutualInfoMask, AudioMutualInfo
+from .loss import AudioMutualInfoMask, AudioMutualInfo
 
 class LocalPatterns(nn.Module):
     def __init__(self):
@@ -179,6 +180,7 @@ class LocalPatternFilter(nn.Module):
                     pad_mode='zero')
         self.utils = LocalPatterns
         self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
+        self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
 
     def _generate_filters_idx(self, X: Tensor) -> Tensor:
         n_positions = self.out_channels
@@ -243,7 +245,8 @@ class SpeechSegmentSelector(nn.Module):
             in_channels: int, 
             kernel_size: int=1023,
             stride: int=128,
-            max_num_tokens: int=2048
+            max_num_tokens: int=2048,
+            mutual_information_mask: Optional[Literal['hard', 'score']]=None
         ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -251,13 +254,17 @@ class SpeechSegmentSelector(nn.Module):
         self.stride = stride
         self.max_num_tokens = max_num_tokens
 
-        self.ami = AudioMutualInfo(
-            kernel_size=512, stride=250, downsampling=8)
-        self.mutual_information = self.ami.mutual_information
-        self.compute_probs = self.ami.compute_probs
         self.utils = LocalPatterns
         self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
         self.pad_fn = PadForConv(kernel_size=self.stride, pad_mode='zero')
+
+
+        self.mutual_information_mask = mutual_information_mask
+        if mutual_information_mask is not None:
+            self.ami = AudioMutualInfo(
+                kernel_size=512, stride=250, downsampling=8)
+            self.mutual_information = self.ami.mutual_information
+            self.compute_probs = self.ami.compute_probs
 
     
     def _extract_all_filters(self, X: Tensor) -> Tensor:
@@ -277,11 +284,11 @@ class SpeechSegmentSelector(nn.Module):
         return filters
 
     def compute_segment_score(
-            self, x: Tensor, filters: Tensor, hard: bool=True) -> Tensor:
+            self, x: Tensor, filters: Tensor) -> Tensor:
         X = x[None, ...]
         X_filtered = F.conv1d(X, filters, padding='same')  # b h n
         X_filtered = self.norm_fn(X_filtered)
-        if hard==True:
+        if self.mutual_information_mask == 'hard':
             px = self.compute_probs(X)
             px_cz = self.compute_probs(X_filtered)
             out = reduce(px.ge(px_cz), 'b h n -> b h', 'all')
@@ -292,11 +299,13 @@ class SpeechSegmentSelector(nn.Module):
     def _generate_filters(self, X: Tensor) -> Tensor:
         X = self.norm_fn(X)
         filters = self._extract_all_filters(X)
-        segment_mask = torch.concat(
-            [self.compute_segment_score(x, filters[i]) for i, x in enumerate(X)], 
-            dim=0)
-        filters = torch.einsum('bhcn,bh->bhn', filters, segment_mask)
-        # filters = rearrange(filters, 'b h c n -> b (c h) n', c=1)
+        if self.mutual_information_mask is not None:
+            segment_mask = torch.concat(
+                [self.compute_segment_score(x, filters[i]) for i, x in enumerate(X)], 
+                dim=0)
+            filters = torch.einsum('bhcn,bh->bhn', filters, segment_mask)
+        else:
+            filters = rearrange(filters, 'b h c n -> b (c h) n', c=1)
         return filters
 
     def forward(self, X: Tensor) -> Tensor: 

@@ -31,6 +31,9 @@ class VectorQuantizer(nn.Module):
         num_embeddings: int, 
         embedding_dim: int, 
         commitment_cost: float=0.1,
+        num_embeddings: int, 
+        embedding_dim: int, 
+        commitment_cost: float=0.1,
         distance_type: Literal['euclidean', 'dot']='euclidean'
     ):
         super().__init__()
@@ -45,10 +48,20 @@ class VectorQuantizer(nn.Module):
         self.distance_type = distance_type
         window = torch.hann_window(self.embedding_dim)
         self.register_buffer("window", window)
-        self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
+        self.norm_fn = lambda A: A / torch.clamp(
+            A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
+        
+        self.learnable_codebook = True
 
+    def from_pretrained(self, path, freeze=True):
+        if path is not None:
+            self.learnable_codebook = not freeze
+            self.embedding = self.embedding.from_pretrained(torch.load(path), freeze=freeze)
+    
     def transform_freq(self, embedding: Tensor) -> Tensor:
         freq = nl_relu(torch.fft.rfft(self.window * embedding, 
+                                      n=self.embedding_dim+1).real**2)[..., 1:]
+        freq = self.norm_fn(freq)
                                       n=self.embedding_dim+1).real**2)[..., 1:]
         freq = self.norm_fn(freq)
         return freq
@@ -60,10 +73,13 @@ class VectorQuantizer(nn.Module):
             embedding_freq = self.transform_freq(self.embedding.weight)
             dot_similarity = X_flatten_freq @ embedding_freq.T 
             distances = 1 - dot_similarity / X_flatten_freq.shape[-1]
+            distances = 1 - dot_similarity / X_flatten_freq.shape[-1]
         else: # euclidean            
+            distances = (torch.sum(X_flatten**2, dim=-1, keepdim=True)
             distances = (torch.sum(X_flatten**2, dim=-1, keepdim=True)
                     + torch.sum(self.embedding.weight**2, dim=1)
                     - 2 * torch.matmul(X_flatten, self.embedding.weight.t()))
+        encoding_indices = torch.argmin(distances, dim=-1, keepdim=True)
         encoding_indices = torch.argmin(distances, dim=-1, keepdim=True)
         return encoding_indices
     
@@ -74,16 +90,21 @@ class VectorQuantizer(nn.Module):
     def compute_perplexity(self, encodings: Tensor) -> Tensor:
         eps = torch.finfo(encodings.dtype).eps
         avg_probs = torch.mean(encodings, dim=0)
-        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + eps)))
+        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs+eps)))
         return perplexity
     
     def compute_vq_loss(self, quantized: Tensor, X: Tensor) -> Tensor:
-        e_latent_loss = F.mse_loss(quantized.detach(), X)
-        q_latent_loss = F.mse_loss(quantized, X.detach())
-        vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
+        if self.learnable_codebook:
+            e_latent_loss = F.mse_loss(quantized.detach(), X)
+            q_latent_loss = F.mse_loss(quantized, X.detach())
+            vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
+        else:
+            vq_loss = F.mse_loss(quantized.detach(), X.detach())
         return vq_loss
 
     def forward(self, X: Tensor) -> tuple[Tensor, Tensor, VqLoss]:
+        assert X.shape[-1] == self.embedding_dim, f'Expect input last dim={self.embedding_dim}, got {X.shape[-1]} instead'
+        assert X.ndim == 3 or X.ndim == 4
         assert X.shape[-1] == self.embedding_dim, f'Expect input last dim={self.embedding_dim}, got {X.shape[-1]} instead'
         assert X.ndim == 3 or X.ndim == 4
 
@@ -94,10 +115,14 @@ class VectorQuantizer(nn.Module):
             dtype=X.dtype, device=X.device)
         encodings.scatter_(1, encoding_indices, 1)
         quantized = torch.matmul(encodings, self.embedding.weight).view(X.shape)
+        vq_loss = self.compute_vq_loss(quantized, X)
         loss = VqLoss(perplexity=self.compute_perplexity(encodings), 
-                      loss_vq=self.compute_vq_loss(quantized, X))
-        # reparametrization trick
-        quantized = X + (quantized - X).detach()
+                      loss_vq=vq_loss)
+        if self.learnable_codebook:# reparametrization trick
+            quantized = X + (quantized - X).detach()
+        else:
+            quantized = quantized.detach()
+            encoding_indices = encoding_indices.detach()
         encoding_indices = rearrange(
             encoding_indices, '(b n) 1 -> b n', b=X.shape[0])
         return quantized, encoding_indices, loss
@@ -164,6 +189,12 @@ class AudioVqVae(nn.Module):
                 kernel_size=self.kernel_size, 
                 stride=self.stride,
                 downsampling=self.downsampling)
+        self.projector_mask = False 
+        if self.projector_mask:
+            self.mutual_info_mask = AudioMutualInfoMask(
+                kernel_size=self.kernel_size, 
+                stride=self.stride,
+                downsampling=self.downsampling)
         
     @property
     def embedding_filters(self) -> Tensor:
@@ -182,20 +213,26 @@ class AudioVqVae(nn.Module):
         if self.projector_mask:
             embedding_mask = self.mutual_info_mask(X_filtered, X)
             X_filtered = torch.einsum('bhn,bh->bhn', X_filtered, embedding_mask)
-        X_filtered = self.downsample(X_filtered)
+        X_filtered = self.downsample(X_filtered) # TODO: bug
         return X_filtered
     
     def get_representation(self, X: Tensor) -> Tensor:
         # TODO: select important tokens from X envelope & return the projection
         pass
 
-    def forward(self, X: Tensor) -> tuple[Tensor, VqVaeLoss]:
+    def train_embedding_ssl(self, X: Tensor) -> VqVaeLoss:
         Z = self.encoder(X)
         Z_quantized, _, vq_loss = self.vq(Z)
         X_filtered = self.decoder(X, Z_quantized)
         recon_loss = self.audio_criterion(X_filtered, X)
-        return X_filtered, VqVaeLoss(*vq_loss, recon_loss)
+        return VqVaeLoss(*vq_loss, recon_loss)
 
+    def forward(self, X: Tensor) -> Tensor:
+        Z = self.encoder(X)
+        Z_quantized, _, _ = self.vq(Z)
+        X_filtered = self.decoder(X, Z_quantized)
+        return X_filtered
+    
     def generate_embedding_mask(self) -> Tensor:
         """
         Evaluate and decide whether the embedding filters are suitable

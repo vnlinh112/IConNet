@@ -16,7 +16,7 @@ import seaborn as sns
 import umap
 sns.set_theme(style="dark")
 
-from .zero_crossing import zero_crossings, zero_crossing_score_chunks_v3
+from .zero_crossing import zero_crossings, zero_crossing_score_chunks_v3, zero_crossing_score_chunks_v2
 from .audio import AudioLibrosa
 
 from matplotlib import ticker
@@ -140,12 +140,17 @@ def get_embedding_color(
     return color, score
 
 def get_embedding_color_v2(
-        y: Tensor, mask_ratio=0.2, score_offset=0.5) -> Tensor:
-    score = zero_crossing_score_chunks_v3(
+        y: Tensor, mask_ratio=0.2, 
+        score_offset=0.5,
+        voice_noise_color: Literal[
+            'blue_orange', 'blue_gray', 
+            'green_pink', 'cyan_gray']='cyan_gray',
+        alpha: float = 0.75
+    ) -> tuple[np.ndarray, Tensor]:
+    score = zero_crossing_score_chunks_v2(
         y, mask_ratio=mask_ratio, score_offset=score_offset)
-    color = torch.stack(
-        [torch.full_like(score, 0.5), score, score], 
-        dim=-1).numpy()
+    color = get_zcs_color_v2(
+        score, voice_noise_color=voice_noise_color, alpha=alpha)
     return color, score
 
 def get_zcs_color(zcs: Tensor):
@@ -155,12 +160,37 @@ def get_zcs_color(zcs: Tensor):
         dim=-1).numpy()
     return color
 
-def get_zcs_color_v2(zcs: Tensor):
-    score_sig = torch.clamp(
-        F.softplus(zcs, beta=40.0, threshold=0.5)*10, max=1)
-    color = torch.stack(
-        [1-score_sig, torch.full_like(zcs, 0.5), score_sig], 
-        dim=-1).numpy()
+def get_zcs_color_v2(
+        zcs: Tensor, 
+        voice_noise_color: Literal[
+            'blue_orange', 'blue_gray', 
+            'green_pink', 'cyan_gray']='cyan_gray',
+        alpha: float = 0.75):
+    alpha = min(max(alpha, 0), 1)
+    if voice_noise_color == 'blue_orange':
+        score_sig = torch.clamp(
+            F.softplus(zcs, beta=40.0, threshold=0.5)*10, max=1)*alpha
+        color = torch.stack(
+            [1-score_sig, torch.full_like(zcs, 0.5), score_sig], 
+            dim=-1).numpy()
+    elif voice_noise_color == 'blue_gray':
+        score_sig = torch.sigmoid(
+            F.softplus(zcs, beta=40.0, threshold=0.5)*10)*alpha
+        color = torch.stack(
+            [1-score_sig, torch.full_like(zcs, 0.5), score_sig], 
+            dim=-1).numpy()
+    elif voice_noise_color == 'green_pink':
+        score_sig = torch.clamp(
+            F.softplus(zcs, beta=40.0, threshold=0.5)*10, max=1)*alpha
+        color = torch.stack(
+            [1-score_sig, score_sig, torch.full_like(zcs, 0.5)], 
+            dim=-1).numpy()
+    else: # cyan_gray
+        score_sig = torch.sigmoid(
+            F.softplus(zcs, beta=40.0, threshold=0.5)*10)*alpha
+        color = torch.stack(
+            [1-score_sig, score_sig, score_sig], 
+            dim=-1).numpy()
     return color
 
 

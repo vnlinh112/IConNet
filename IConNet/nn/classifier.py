@@ -79,3 +79,13 @@ class FeedForward(nn.Module):
     
     def forward(self, x):
         return self.ffn(x)
+    
+class FeedForwardAddNorm(FeedForward):
+    def __init__(self, d_model, dropout=0.15) -> None:
+        super().__init__(
+            d_model=d_model, dropout=dropout)
+        self.norm = nn.LayerNorm(d_model)
+    
+    def forward(self, x):
+        x = x + self.ffn(x)
+        return self.norm(x)
