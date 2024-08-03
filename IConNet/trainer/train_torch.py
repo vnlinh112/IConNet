@@ -61,7 +61,6 @@ class Trainer:
             train_loader: DataLoader, 
             test_loader: DataLoader,
             loss_ratio: Union[VqVaeClsLoss, AudioVQMixClsLoss],
-            loss_ratio: Union[VqVaeClsLoss, AudioVQMixClsLoss],
             eval_loader=None,
             batch_size=None,
         ):
@@ -136,13 +135,8 @@ class Trainer:
     def compute_loss(
             self, losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]]
         ) -> tuple[Tensor, Union[VqVaeClsLoss, AudioVQMixClsLoss]]:
-    def compute_loss(
-            self, losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]]
-        ) -> tuple[Tensor, Union[VqVaeClsLoss, AudioVQMixClsLoss]]:
         values = []
         loss = torch.tensor(0., requires_grad=True)
-        loss_type = type(losses_detail[0])
-        for key in loss_type._fields:
         loss_type = type(losses_detail[0])
         for key in loss_type._fields:
             v = torch.stack([getattr(ld, key) for ld in losses_detail]).mean()
@@ -228,7 +222,6 @@ class Trainer:
         message += f" [{', '.join(values)}]\t"
         return message
 
-    def log_eval(self, loss, acc, message, result_dict=None):
     def log_eval(self, loss, acc, message, result_dict=None):
         print(message)
         suffix = f"epoch={self.current_epoch}.step={self.current_step}."

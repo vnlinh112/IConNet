@@ -31,9 +31,6 @@ class VectorQuantizer(nn.Module):
         num_embeddings: int, 
         embedding_dim: int, 
         commitment_cost: float=0.1,
-        num_embeddings: int, 
-        embedding_dim: int, 
-        commitment_cost: float=0.1,
         distance_type: Literal['euclidean', 'dot']='euclidean'
     ):
         super().__init__()
@@ -62,8 +59,6 @@ class VectorQuantizer(nn.Module):
         freq = nl_relu(torch.fft.rfft(self.window * embedding, 
                                       n=self.embedding_dim+1).real**2)[..., 1:]
         freq = self.norm_fn(freq)
-                                      n=self.embedding_dim+1).real**2)[..., 1:]
-        freq = self.norm_fn(freq)
         return freq
 
     def get_nearest_neighbour(self, X_flatten: Tensor) -> Tensor:
@@ -75,7 +70,6 @@ class VectorQuantizer(nn.Module):
             distances = 1 - dot_similarity / X_flatten_freq.shape[-1]
             distances = 1 - dot_similarity / X_flatten_freq.shape[-1]
         else: # euclidean            
-            distances = (torch.sum(X_flatten**2, dim=-1, keepdim=True)
             distances = (torch.sum(X_flatten**2, dim=-1, keepdim=True)
                     + torch.sum(self.embedding.weight**2, dim=1)
                     - 2 * torch.matmul(X_flatten, self.embedding.weight.t()))
