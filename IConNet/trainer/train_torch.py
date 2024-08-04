@@ -23,7 +23,7 @@ from .data_torch import SimpleDataModule as DataModule
 from torch.utils.data import random_split, DataLoader
 from ..utils.config import DatasetConfig
 from ..dataset import DEFAULTS
-from ..acov.model import SCB
+from ..acov.model import SCB, SCB10
 from ..acov.audio_vqvae import VqVaeLoss, VqVaeClsLoss
 from ..acov.audio_vqmix import AudioVQMixClsLoss
 from ..acov.audio_vqmix import AudioVQMixClsLoss
@@ -306,6 +306,7 @@ class Trainer:
             loss=loss, acc=acc, 
             message=message, 
             result_dict=result_dict)
+        self.model.train()
     
     @torch.no_grad
     def test_step(self):
@@ -349,6 +350,8 @@ class Trainer:
             torch.save(self.model.state_dict(), model_path)
             self.best_test_model_path = model_path
             print(f"Saved new best test model: {self.best_test_model_path}")
+
+        self.model.train()        
         return metrics, metrics_detail, confusion_matrix
 
     def fit(
@@ -383,17 +386,22 @@ class Trainer:
                 self.train_step(
                     self_supervised=self_supervised, 
                     train_task=train_task)
-                if test_n_epoch is not None and test_n_epoch > 0 and epoch % test_n_epoch == 0:
-                    if self_supervised == True:
-                        self.train_step(
-                            self_supervised=False, 
-                            train_task=train_task)
+                
+                is_test_epoch = (test_n_epoch is not None and test_n_epoch > 0 and epoch % test_n_epoch == 0)
+                if is_test_epoch and self_supervised == True:
+                    self.train_step(
+                        self_supervised=False, 
+                        train_task=train_task)
+                
+                self.scheduler.step()
+
+                if is_test_epoch:
                     metrics, metrics_details, confusion_matrix = self.test_step()
                     pprint(metrics.compute())
                     pprint(metrics_details.compute())
                     pprint(confusion_matrix.compute())
                     self.save()
-                self.scheduler.step()
+                
         self.model.to('cpu')       
 
     def save(self, checkpoint_path=None):
@@ -463,6 +471,7 @@ class Trainer_SCB10(Trainer):
         self.log_eval(
             loss=loss, acc=acc, 
             message=message)
+        self.model.train()
 
 
 def get_dataloader(config: DatasetConfig, data_dir, batch_size=None):

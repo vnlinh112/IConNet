@@ -12,6 +12,8 @@ from ..nn.activation import gumbel_softmax, nl_relu
 from .loss import AudioMutualInfo
 from ..nn.mamba import MambaBlock
 
+from ..nn.sequential import Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks
+
 class SCB(nn.Module):
     def __init__(
         self,
@@ -409,12 +411,12 @@ class SCB12(SCB):
         self.linear_projector = nn.Linear(
             embedding_dim, cls_dim, bias=False)
         self.num_mamba_block = num_mamba_block
-        self.mamba_blocks = nn.Sequential(*[MambaBlock(
-            d_model=cls_dim, 
-            d_conv=4, 
-            d_state=2, 
-            expand=4
-        ) for _ in range(num_mamba_block)])
+        # self.mamba_blocks = nn.Sequential(*[MambaBlock(
+        #     d_model=cls_dim, 
+        #     d_conv=4, 
+        #     d_state=2, 
+        #     expand=4
+        # ) for _ in range(num_mamba_block)])
         self.ssl_head = nn.Linear(cls_dim, num_embeddings)
 
         self.classifier = nn.Sequential(
@@ -423,6 +425,12 @@ class SCB12(SCB):
             nn.PReLU(self.cls_dim),
             nn.Linear(self.cls_dim, num_classes)
         )
+
+        self.lstm_blocks = nn.LSTM(
+                input_size=cls_dim, 
+                hidden_size=cls_dim, 
+                num_layers=num_mamba_block, 
+                batch_first=True)
 
     @property
     def embedding_filters(self) -> Tensor:
@@ -444,10 +452,14 @@ class SCB12(SCB):
                 path, freeze=freeze)
             self.encoder.embedding.weight.data = self.embedding_filters.detach().clone()
 
+    def lstm_forward(self, X: Tensor) -> Tensor:
+        X, _ = self.lstm_blocks(X)
+        return X
+
     def encode(self, X: Tensor) -> Tensor:
         encodings, loss = self.encoder.encode(X)
         latent = self.ssl_head(
-            self.mamba_blocks(
+            self.lstm_forward(
                 self.linear_projector(encodings)))
         return latent
 
@@ -465,7 +477,7 @@ class SCB12(SCB):
     def train_next_token_prediction(self, X: Tensor, Y: Tensor) -> Tensor:
         X = self.encoder.embedding(X) 
         X = X + self.encoder.generate_positional_encoding(X.shape[1])
-        X_next = self.ssl_head(self.mamba_blocks(self.linear_projector(X)))
+        X_next = self.ssl_head(self.lstm_forward(self.linear_projector(X)))
         X_next = rearrange(X_next, 'b n h -> (b n) h')
         Y = rearrange(Y, 'b n -> (b n)')
         loss = F.cross_entropy(X_next, Y).mean() 
