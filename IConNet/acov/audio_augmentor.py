@@ -69,6 +69,13 @@ class AudioAugmentor(nn.Module):
     @property
     def embedding_filters(self) -> Tensor:
         return self.vq.embedding.weight
+    
+    def load_codebook(self, path, freeze=True):
+        self.codebook_pretrained_path = path
+        self.freeze_codebook = freeze
+        if path is not None:
+            self.vq.from_pretrained(
+                path, freeze=freeze)
 
     def project(self, X: Tensor) -> Tensor:
         filters = repeat(

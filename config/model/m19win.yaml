@@ -1,0 +1,22 @@
+name: M19
+description: FirConv with learnable windows
+fe:
+  n_block: 1
+  n_channel: [256]
+  kernel_size: [511]
+  stride: [2]
+  window_k: [5]
+  # residual_connection_type: None
+  pooling: mean
+  filter_type: sinc
+  learnable_bands: False
+  learnable_windows: True
+  shared_window: False
+  window_func: hamming
+  mel_resolution: 3
+  conv_mode: conv
+  norm_type: LocalResponseNorm
+cls:
+  n_block: 2 
+  n_hidden_dim: [512, 512]
+  norm_type: 'LayerNorm'

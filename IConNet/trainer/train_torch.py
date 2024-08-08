@@ -91,6 +91,7 @@ class Trainer:
         self.train_losses = []
         self.train_losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
         self.test_accuracy = []
+        self.val_accuracy = []
     
         self.pbar = None
         self.current_epoch = 0
@@ -224,6 +225,7 @@ class Trainer:
         return message
 
     def log_eval(self, loss, acc, message, result_dict=None):
+        self.val_accuracy.append(acc)
         print(message)
         suffix = f"epoch={self.current_epoch}.step={self.current_step}."
         suffix += f"loss={loss:.3f}.val_acc={acc:.3f}.pt"
@@ -341,7 +343,7 @@ class Trainer:
             self._update_progress_bar()
         acc = correct/total
         print(f'Correct: {correct}/{total} ({acc:.4f})')
-        
+        self.test_accuracy.append(acc)
         if acc > self.best_test_accuracy:
             self.best_test_epoch = self.current_epoch
             self.best_test_accuracy = acc 
@@ -368,7 +370,11 @@ class Trainer:
         
         device = self.device
         has_test_step = not self_supervised
-        self.total_batches = self.train_batches + self.test_batches*has_test_step
+        if test_n_epoch is None:
+            num_test_batches = 0
+        else:
+            num_test_batches = (self.test_batches//test_n_epoch)*has_test_step
+        self.total_batches = self.train_batches + num_test_batches
         self.pbar_update = 1/self.total_batches
         if lr is not None:
             self.lr = lr

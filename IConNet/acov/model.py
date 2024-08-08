@@ -14,6 +14,7 @@ from ..nn.mamba import MambaBlock
 from .scb_win_conv import SCBWinConv
 from ..nn.sequential import Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks
 from ..nn.activation import NLReLU
+from ..trainer.model_wrapper import ModelWrapper
 
 class SCB(nn.Module):
     def __init__(
@@ -586,3 +587,72 @@ class SCB13(nn.Module):
         probs = F.softmax(logits, dim=-1)
         preds = probs.argmax(dim=-1)
         return preds, probs
+    
+
+class SCB14(SCB):
+    def __init__(
+        self,
+        in_channels: int,    
+        num_embeddings: int, 
+        embedding_dim: int, 
+        commitment_cost: float,
+        num_classes: int, 
+        stride: int=8,
+        cls_dim: int=500,
+        sample_rate: int=16000,
+        sample_mode: Literal['fixed', 
+                            'zero_crossing', 
+                            'envelope']='envelope',
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        loss_type: Literal['overlap', 'minami', 
+                            'maxami', 'mami']='maxami',
+        codebook_pretrained_path: Optional[str]=None,
+        freeze_codebook: bool=False,
+        iconnet_config = None
+    ):
+        super().__init__(
+            in_channels=in_channels, 
+            num_embeddings=num_embeddings, 
+            embedding_dim=embedding_dim, 
+            cls_dim=cls_dim, 
+            num_classes=num_classes, 
+            sample_rate=sample_rate, 
+            stride=stride, 
+            sample_mode=sample_mode, 
+            distance_type=distance_type, 
+            loss_type=loss_type, 
+            commitment_cost=commitment_cost
+        )
+        self.codebook_pretrained_path = codebook_pretrained_path
+        self.freeze_codebook = freeze_codebook
+
+        self.encoder = AudioAugmentor(
+            in_channels=in_channels,
+            num_embeddings=num_embeddings, 
+            embedding_dim=embedding_dim, 
+            kernel_size=embedding_dim,
+            stride=stride,
+            commitment_cost=commitment_cost,
+            distance_type=distance_type,
+            loss_type=loss_type
+        )  
+
+        if codebook_pretrained_path is not None:
+            self.encoder.load_codebook(
+                codebook_pretrained_path, freeze_codebook)
+
+        self.iconnet_config = iconnet_config 
+        self.classifier = ModelWrapper(
+            iconnet_config.name).init_model(
+                iconnet_config, n_input=num_embeddings, n_output=num_classes)
+        
+    @property
+    def embedding_filters(self) -> Tensor:
+        return self.encoder.embedding_filters
+    
+    def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        X = self.encoder.project(X)
+        X = F.max_pool1d(nl_relu(X), kernel_size=128, stride=32)
+        latent = reduce(X,'b h n -> b h', 'mean')
+        logits = self.classifier(X)
+        return logits, latent

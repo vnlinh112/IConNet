@@ -28,7 +28,7 @@ class SimpleDataModule(nn.Module):
         self.num_workers = num_workers 
         self.pin_memory = pin_memory
         self.labels = config.target_labels
-        self.collate_tn: callable = None
+        self.collate_fn: callable = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
@@ -60,7 +60,11 @@ class SimpleDataModule(nn.Module):
         """Get maximum divisor for data_size that is less than or equal to batch_size."""
         num_range = np.arange(min(math.sqrt(data_size), batch_size))[1:][::-1]
         divisors = [i for i in num_range if data_size % i==0]
-        return int(divisors[0])
+        if len(divisors) > 0:
+            batch_size = int(divisors[0])
+        else:
+            batch_size = 1
+        return batch_size
     
     @staticmethod
     def collate_fn_with_mask(batch) -> tuple[TensorWithMask, Tensor]:

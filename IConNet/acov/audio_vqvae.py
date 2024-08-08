@@ -31,7 +31,8 @@ class VectorQuantizer(nn.Module):
         num_embeddings: int, 
         embedding_dim: int, 
         commitment_cost: float=0.1,
-        distance_type: Literal['euclidean', 'dot']='euclidean'
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        learnable_codebook: bool=True
     ):
         super().__init__()
 
@@ -48,7 +49,7 @@ class VectorQuantizer(nn.Module):
         self.norm_fn = lambda A: A / torch.clamp(
             A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
         
-        self.learnable_codebook = True
+        self.learnable_codebook = learnable_codebook
 
     def from_pretrained(self, path, freeze=True):
         if path is not None:
