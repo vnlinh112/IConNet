@@ -195,16 +195,16 @@ def get_zcs_color_v2(
 
 
 def visualize_embedding_umap(
-    data, colors, edgecolors="black",
-    n_neighbors=15, min_dist=0.1, 
-    n_components=2, metric='euclidean', title=''):
-    fit = umap.UMAP(
+        data, colors, edgecolors="black",
+        n_neighbors=15, min_dist=0.1, 
+        n_components=2, metric='euclidean', title=''
+    ):
+    transformer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
         n_components=n_components,
-        metric=metric
-    )
-    u = fit.fit_transform(data)
+        metric=metric)
+    u = transformer.fit_transform(data)
     fig = plt.figure()
     if n_components == 1:
         ax = fig.add_subplot(111)
@@ -222,6 +222,51 @@ def visualize_embedding_umap(
             u[:,0], u[:,1], u[:,2], 
             s=100, c=colors, edgecolors=edgecolors)
     plt.title(title, fontsize=18)
+
+
+def transform_and_visualize_umap(
+        transformer, data, target, classnames, 
+        edgecolors=None, title=''
+    ):
+    u = transformer.transform(data)
+    fig, ax = plt.subplots(1, figsize=(8, 4))
+    plt.scatter(u[:,0], u[:,1], c=target, cmap='Spectral', 
+                edgecolors=edgecolors)
+    plt.setp(ax, xticks=[], yticks=[])
+    num_classes = len(classnames)
+    cbar = plt.colorbar(boundaries=np.arange(num_classes+1)-0.5)
+    cbar.set_ticks(np.arange(num_classes))
+    cbar.set_ticklabels(classnames)
+    plt.title(title)
+    return u
+    
+def train_and_visualize_embedding_umap(
+        data, target, classnames, 
+        masked_target=None, mask_ratio=None,
+        n_epochs=500, learning_rate=0.001,
+        edgecolors="black",
+        n_neighbors=15, min_dist=0.1, 
+        n_components=2, metric='euclidean', output_metric='euclidean', 
+        title=''
+    ):
+    if masked_target is None:
+        masked_target = target.clone()
+        if mask_ratio is not None:
+            masked_target[np.random.choice(
+                len(target), size=int(len(target)*mask_ratio), replace=False)] = -1
+    transformer = umap.UMAP(
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        n_components=n_components,
+        n_epochs=n_epochs, 
+        learning_rate=learning_rate,
+        metric=metric, output_metric=output_metric)
+    transformer = transformer.fit(data, y=masked_target)
+    u = transform_and_visualize_umap(
+        transformer, data, target, classnames, 
+        edgecolors=edgecolors, title=title)
+    return transformer, u
+
 
 def visualize_training_curves(
         test_accuracy, train_cls_loss,

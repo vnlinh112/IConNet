@@ -62,7 +62,7 @@ class WaveformDataset(PickleDataset):
         else:
             dim0 = np.unique([d.shape[0] for d in self.data_x[:10]])
             dim1 = np.unique([d.shape[1] for d in self.data_x[:10]])
-            assert min(dim0, dim1) == 1, "data_x must have the same number of channels"
+            assert min(len(dim0), len(dim1)) == 1, "data_x must have the same number of channels"
             if len(dim0) > 1: # [(seq_length, num_channels)]
                 self.data_x = [item.t() for item in self.data_x]    
         self.feature_dim = self.data_x[0].shape[0]          

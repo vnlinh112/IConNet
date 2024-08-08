@@ -11,8 +11,9 @@ from .audio_augmentor import AudioAugmentor
 from ..nn.activation import gumbel_softmax, nl_relu
 from .loss import AudioMutualInfo
 from ..nn.mamba import MambaBlock
-
+from .scb_win_conv import SCBWinConv
 from ..nn.sequential import Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks
+from ..nn.activation import NLReLU
 
 class SCB(nn.Module):
     def __init__(
@@ -508,3 +509,80 @@ class SCB12(SCB):
         loss = vq_loss._replace(loss_cls=loss_cls)
         return Z, loss
     
+
+class SCB13(nn.Module):
+    """
+    SCB Augmentation + IConNet
+    """
+    def __init__(
+        self,
+        in_channels: int,    
+        num_embeddings: int, 
+        embedding_dim: int, 
+        num_classes: int, 
+        window_k: int=5,
+        stride: int=1,
+        cls_dim: int=500,
+        sample_rate: int=16000,
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        loss_type: Literal['overlap', 'minami', 
+                            'maxami', 'mami']='overlap',
+        codebook_pretrained_path: Optional[str]=None,
+        freeze_codebook: bool=False,
+        num_tokens_per_second: int=64,
+        max_num_tokens: int=768, 
+    ):
+        super().__init__()
+
+        self.num_embeddings = num_embeddings
+        self.cls_dim = cls_dim
+        self.window_k = window_k
+
+        self.encoder = SCBWinConv(
+            in_channels=in_channels,
+            out_channels=num_embeddings,
+            kernel_size=embedding_dim, 
+            stride=stride,
+            learnable_windows=True,
+            shared_window=False,
+            window_k=window_k,
+            filter_init=codebook_pretrained_path,
+            sample_rate=sample_rate, 
+        )
+
+        self.classifier = nn.Sequential(
+            NLReLU(),
+            nn.LayerNorm(self.num_embeddings),
+            nn.Linear(self.num_embeddings, self.cls_dim, bias=False),
+            nn.PReLU(self.cls_dim),
+            nn.Linear(self.cls_dim, self.cls_dim, bias=False),
+            nn.PReLU(self.cls_dim),
+            nn.Linear(self.cls_dim, num_classes, bias=False)
+        )
+
+    @property
+    def embedding_filters(self) -> Tensor:
+        return self.encoder.filters
+    
+    @property
+    def filter_codebook(self) -> Tensor:
+        return self.encoder.filters * self.encoder.windows
+
+    def encode(self, X: Tensor) -> Tensor:
+        return self.encoder(X)
+
+    def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        latent = self.encode(X)
+        latent = reduce(latent,'b h n -> b h', 'mean', h=self.num_embeddings)
+        logits = self.classifier(latent)
+        return logits
+    
+    def forward(self, X: Tensor) -> Tensor:
+        logits = self.classify(X)
+        return logits
+    
+    def predict(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        logits = self.forward(X)
+        probs = F.softmax(logits, dim=-1)
+        preds = probs.argmax(dim=-1)
+        return preds, probs

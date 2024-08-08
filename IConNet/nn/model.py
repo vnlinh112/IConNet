@@ -6,6 +6,7 @@ from typing import Literal, Optional, Union
 from collections import OrderedDict
 from einops import rearrange, reduce
 import torch.nn as nn
+from torch.nn import functional as F
 import torchaudio
 from ..utils.config import get_optional_config_value
 import torch
@@ -101,6 +102,12 @@ class M11(nn.Module):
         x = self.seq_blocks(x)
         x = self.cls_head(reduce(x, 'b h n -> b h', 'max'))
         return x 
+    
+    def predict(self, X):
+        logits = self.forward(X)
+        probs = F.softmax(logits, dim=-1)
+        preds = probs.argmax(dim=-1)
+        return preds, probs
 
 
 class M12(nn.Module):

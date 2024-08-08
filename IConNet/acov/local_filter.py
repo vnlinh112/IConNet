@@ -7,7 +7,6 @@ from ..conv.pad import PadForConv
 from .zero_crossing import zero_crossings, zero_crossing_score, samples_like
 from einops import reduce, rearrange, repeat
 from .loss import AudioMutualInfoMask, AudioMutualInfo
-from .loss import AudioMutualInfoMask, AudioMutualInfo
 
 class LocalPatterns(nn.Module):
     def __init__(self):
@@ -179,7 +178,6 @@ class LocalPatternFilter(nn.Module):
                     kernel_size=self.kernel_size,
                     pad_mode='zero')
         self.utils = LocalPatterns
-        self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
         self.norm_fn = lambda A: A / torch.clamp(A.abs().amax(dim=-1, keepdim=True), min=torch.finfo(A.dtype).eps)
 
     def _generate_filters_idx(self, X: Tensor) -> Tensor:

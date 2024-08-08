@@ -60,7 +60,7 @@ class Trainer:
             self, 
             train_loader: DataLoader, 
             test_loader: DataLoader,
-            loss_ratio: Union[VqVaeClsLoss, AudioVQMixClsLoss],
+            loss_ratio: Optional[Union[VqVaeClsLoss, AudioVQMixClsLoss]]=None,
             eval_loader=None,
             batch_size=None,
         ):
@@ -89,7 +89,6 @@ class Trainer:
         self.model = model
         
         self.train_losses = []
-        self.train_losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
         self.train_losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
         self.test_accuracy = []
     
@@ -156,7 +155,6 @@ class Trainer:
         device = self.device
         self.model.train()
         losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
-        losses_detail: list[Union[VqVaeClsLoss, AudioVQMixClsLoss]] = []
         for batch_idx, (data, target) in enumerate(self.train_loader):
             _mem_before = torch.cuda.memory_allocated()
             data = data.to(device)
@@ -211,15 +209,18 @@ class Trainer:
             self._update_progress_bar()
                                     
     
-    def gen_log_message(self, batch_idx, loss, loss_detail, memory=None):
+    def gen_log_message(self, batch_idx, loss, loss_detail=None, memory=None):
         # if memory is not None:
             # message = f'Mem before-during-after: {memory}\n'
         message = ""
         progress = f"{batch_idx * self.batch_size}/{self.train_data_size} "
         progress += f"({100. * batch_idx / self.train_batches:.0f}%)"
         message += f"Epoch: {self.current_epoch}\tLoss: {loss:.3f}"
-        values = [f"{k}={loss_detail[i]:.3f}" for i,k in enumerate(loss_detail._fields)]
-        message += f" [{', '.join(values)}]\t"
+        if loss_detail is not None:
+            values = [f"{k}={loss_detail[i]:.3f}" for i,k in enumerate(loss_detail._fields)]
+            message += f" [{', '.join(values)}]\t"
+        else: 
+            message += "\t"
         return message
 
     def log_eval(self, loss, acc, message, result_dict=None):
@@ -472,6 +473,78 @@ class Trainer_SCB10(Trainer):
             loss=loss, acc=acc, 
             message=message)
         self.model.train()
+
+class Trainer_custom_model(Trainer_SCB10):
+    def __init__(
+            self, 
+            batch_size, log_dir, experiment_prefix, device,
+            eval_ratio: float=0.2,
+            gradient_clip_val: float=0,
+            accumulate_grad_batches: int=1,
+    ):
+        super().__init__(
+            batch_size, log_dir, experiment_prefix, device,
+            eval_ratio, gradient_clip_val, accumulate_grad_batches)
+
+    def setup(self, model, lr=1e-3):
+        super().setup(model=None, lr=lr)
+        self.model = model
+        self.train_losses_detail = []
+
+    def train_step(self):
+        device = self.device
+        self.model.train()
+        loss = torch.tensor(0., dtype=torch.float64, requires_grad=True)
+        for batch_idx, (data, target) in enumerate(self.train_loader):
+            data = data.to(device)
+            target = target.to(device)
+            logits = self.model(data)
+            loss = loss + F.cross_entropy(logits.squeeze(), target)
+            del data, target
+            gc.collect()
+            torch.cuda.empty_cache()
+            if batch_idx % self.accumulate_grad_batches:
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.clip_gradient()
+                self.optimizer.step()
+                self.current_step += 1
+                loss = loss.item()
+                self.train_losses.append(loss)
+                if batch_idx % self.val_check_batches == 0: 
+                    message = self.gen_log_message(
+                        batch_idx, loss, loss_detail=None,
+                        memory=None
+                    )    
+                    self.eval_step(loss=loss, message=message)
+                loss = torch.tensor(0., dtype=torch.float64, requires_grad=True)
+            self._update_progress_bar()
+            
+    def fit(self, n_epoch=10, lr=None, test_n_epoch=1):
+        device = self.device
+        self.total_batches = self.train_batches + self.test_batches // test_n_epoch
+        self.pbar_update = 1/self.total_batches
+        if lr is not None:
+            self.lr = lr
+        self.optimizer = optim.RAdam(self.learnable_parameters, lr=self.lr)
+        self.scheduler = optim.lr_scheduler.OneCycleLR(
+            self.optimizer, max_lr=0.1,
+            steps_per_epoch=self.train_batches, 
+            epochs=n_epoch)
+        self.model.to(device)
+        with tqdm(total=n_epoch) as pbar:
+            self.pbar = pbar
+            for epoch in range(n_epoch):
+                self.current_epoch += 1
+                self.train_step()
+                self.scheduler.step()
+                is_test_epoch = (test_n_epoch is not None and test_n_epoch > 0 and epoch % test_n_epoch == 0)   
+                if is_test_epoch:
+                    metrics, metrics_details, confusion_matrix = self.test_step()
+                    pprint(metrics.compute())
+                    pprint(metrics_details.compute())
+                    pprint(confusion_matrix.compute())           
+        self.model.to('cpu')  
 
 
 def get_dataloader(config: DatasetConfig, data_dir, batch_size=None):
