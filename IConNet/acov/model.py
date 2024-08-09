@@ -5,12 +5,12 @@ from torch.nn import functional as F
 from .audio_vqvae import AudioVqVae, VqVaeLoss, VqVaeClsLoss
 from einops import reduce, rearrange, repeat
 from ..nn.classifier import FeedForward, FeedForwardAddNorm
-from ..nn.mamba_model import MambaSeq2OneBlocks
+# from ..nn.mamba_model import MambaSeq2OneBlocks
 from .audio_vqmix import AudioVQEncoder, AudioVQMixClsLoss, VqClsLoss
 from .audio_augmentor import AudioAugmentor
 from ..nn.activation import gumbel_softmax, nl_relu
 from .loss import AudioMutualInfo
-from ..nn.mamba import MambaBlock
+# from ..nn.mamba import MambaBlock
 from .scb_win_conv import SCBWinConv
 from ..nn.sequential import Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks
 from ..nn.activation import NLReLU
@@ -656,3 +656,11 @@ class SCB14(SCB):
         latent = reduce(X,'b h n -> b h', 'mean')
         logits = self.classifier(X)
         return logits, latent
+    
+    def train_embedding(self, X: Tensor) -> VqVaeClsLoss:
+        if self.freeze_codebook:
+            return VqVaeClsLoss(
+                perplexity=self.zero_loss, loss_vq=self.zero_loss,
+                loss_recon=self.zero_loss, loss_cls=self.zero_loss)
+        vq_loss = self.encoder.train_embedding_ssl(X)
+        return VqVaeClsLoss(*vq_loss, loss_cls=self.zero_loss)
