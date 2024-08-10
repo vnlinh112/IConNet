@@ -15,6 +15,7 @@ from .scb_win_conv import SCBWinConv
 from ..nn.sequential import Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks
 from ..nn.activation import NLReLU
 from ..trainer.model_wrapper import ModelWrapper
+from ..conv.pad import PadForConv
 
 class SCB(nn.Module):
     def __init__(
@@ -652,8 +653,8 @@ class SCB14(SCB):
     
     def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
         X = self.encoder.project(X)
-        X = F.max_pool1d(nl_relu(X), kernel_size=128, stride=32)
-        latent = reduce(X,'b h n -> b h', 'mean')
+        X = F.max_pool1d(nl_relu(latent), kernel_size=128, stride=32)
+        latent = reduce(X, 'b h n -> b h', 'mean')
         logits = self.classifier(X)
         return logits, latent
     
@@ -664,3 +665,81 @@ class SCB14(SCB):
                 loss_recon=self.zero_loss, loss_cls=self.zero_loss)
         vq_loss = self.encoder.train_embedding_ssl(X)
         return VqVaeClsLoss(*vq_loss, loss_cls=self.zero_loss)
+    
+
+class SCB15(SCB14):
+    def __init__(
+        self,
+        in_channels: int,    
+        num_embeddings: int, 
+        embedding_dim: int, 
+        commitment_cost: float,
+        num_classes: int, 
+        stride: int=8,
+        cls_dim: int=500,
+        sample_rate: int=16000,
+        sample_mode: Literal['fixed', 
+                            'zero_crossing', 
+                            'envelope']='envelope',
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        loss_type: Literal['overlap', 'minami', 
+                            'maxami', 'mami']='maxami',
+        codebook_pretrained_path: Optional[str]=None,
+        freeze_codebook: bool=False,
+        iconnet_config = None,
+        num_tokens_per_second: int=16,
+    ):
+        super().__init__(
+            in_channels=in_channels, 
+            num_embeddings=num_embeddings, 
+            embedding_dim=embedding_dim, 
+            cls_dim=cls_dim, 
+            num_classes=num_classes, 
+            sample_rate=sample_rate, 
+            stride=stride, 
+            sample_mode=sample_mode, 
+            distance_type=distance_type, 
+            loss_type=loss_type, 
+            commitment_cost=commitment_cost,
+            codebook_pretrained_path=codebook_pretrained_path,
+            freeze_codebook=freeze_codebook,
+            iconnet_config=iconnet_config
+        )
+
+        self.classifier = ModelWrapper(
+            iconnet_config.name).init_model(
+                iconnet_config, n_input=num_embeddings, n_output=num_classes)
+        
+        self.num_tokens_per_second = num_tokens_per_second
+        self.pad_token_layer = PadForConv(kernel_size=num_tokens_per_second)
+
+    # def iconnet_forward(self, X: Tensor):
+    #     X = rearrange(X, 'b h n -> (b h) 1 n')
+    #     X = self.classifier.fe_blocks(X)
+    #     X = reduce(
+    #         self.pad_token_layer(X), 
+    #         'bh c (m t) -> (bh m) c', 'mean', 
+    #         t=self.num_tokens_per_second)
+    #     logits = self.classifier.cls_head(X)
+    #     logits = reduce(logits, '(b h m) l -> (b h) l', 'max')
+    #     logits = reduce(logits, '(b h) l -> b l', 'mean')
+    #     return logits
+    
+    def iconnet_forward(self, X: Tensor):
+        batch_size = X.shape[0]
+        X = self.classifier.fe_blocks(X)
+        X = reduce(
+            self.pad_token_layer(X), 
+            'b h (m t) -> (b m) h', 'mean', 
+            t=self.num_tokens_per_second)
+        logits = self.classifier.cls_head(X)
+        logits = reduce(logits, '(b m) l -> b l', 'max', b=batch_size)
+        return logits
+    
+    def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        X = self.encoder.project(X)
+        latent = reduce(
+            F.max_pool1d(nl_relu(X), kernel_size=128, stride=32), 
+            'b h n -> b h', 'mean')
+        logits = self.iconnet_forward(X)
+        return logits, latent
