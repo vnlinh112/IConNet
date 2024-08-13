@@ -1,11 +1,11 @@
-from typing import Literal
+from typing import Literal, Optional
 import torch 
 from torch import nn, Tensor
 from torch.nn import functional as F
 from ..nn.activation import nl_relu
 from ..conv.pad import PadForConv
 from .local_filter import LocalPatternFilter, LocalPatterns, FilterEnhance
-from .loss import AudioOverlapInformationLoss, AudioMutualInfoMask
+from .loss import AudioOverlapInformationLoss, AudioMutualInfoMask, SignalLoss
 from einops import reduce, rearrange, repeat
 
 import collections
@@ -137,7 +137,13 @@ class AudioVqVae(nn.Module):
         sample_mode: Literal['fixed', 
                             'zero_crossing', 
                             'envelope']='envelope',
-        distance_type: Literal['euclidean', 'dot']='euclidean'                    
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        projector_mask: bool=False, 
+        loss_type: Literal['overlap', 'minami', 
+                            'maxami', 'mami',
+                            'signal_loss']='signal_loss',     
+        codebook_pretrained_path: Optional[str]=None,     
+        freeze_codebook: bool=False         
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -172,28 +178,39 @@ class AudioVqVae(nn.Module):
         )
         
         self.utils = LocalPatterns
-        self.audio_criterion = AudioOverlapInformationLoss(
-            kernel_size=self.kernel_size, 
-            stride=self.stride,
-            downsampling=self.downsampling,
-            loss_type='overlap', reduction=None
-        )
-        self.projector_mask = False 
-        if self.projector_mask:
-            self.mutual_info_mask = AudioMutualInfoMask(
+
+        self.load_codebook(
+            path=codebook_pretrained_path,
+            freeze=freeze_codebook)
+
+        if loss_type == 'signal_loss':
+            self.audio_criterion = SignalLoss()
+        else:
+            self.audio_criterion = AudioOverlapInformationLoss(
                 kernel_size=self.kernel_size, 
                 stride=self.stride,
-                downsampling=self.downsampling)
-        self.projector_mask = False 
-        if self.projector_mask:
-            self.mutual_info_mask = AudioMutualInfoMask(
-                kernel_size=self.kernel_size, 
-                stride=self.stride,
-                downsampling=self.downsampling)
+                downsampling=self.downsampling,
+                loss_type=loss_type, reduction='mean'
+            )
+
+        self.projector_mask = projector_mask 
+
+        # if self.projector_mask:
+        #     self.mutual_info_mask = AudioMutualInfoMask(
+        #         kernel_size=self.kernel_size, 
+        #         stride=self.stride,
+        #         downsampling=self.downsampling)
         
     @property
     def embedding_filters(self) -> Tensor:
         return self.vq.embedding.weight
+
+    def load_codebook(self, path, freeze=True):
+        self.codebook_pretrained_path = path
+        self.freeze_codebook = freeze
+        if path is not None:
+            self.vq.from_pretrained(
+                path, freeze=freeze)
     
     def downsample(self, X: Tensor) -> Tensor:
         return reduce(
@@ -206,9 +223,9 @@ class AudioVqVae(nn.Module):
             'h n -> h c n', c=self.in_channels)
         X_filtered = F.conv1d(X, filters, padding='same')
         if self.projector_mask:
-            embedding_mask = self.mutual_info_mask(X_filtered, X)
-            X_filtered = torch.einsum('bhn,bh->bhn', X_filtered, embedding_mask)
-        X_filtered = self.downsample(X_filtered) # TODO: bug
+            embedding_mask = self.generate_embedding_mask()
+            X_filtered = torch.einsum('bhn,h->bhn', X_filtered, embedding_mask)
+        # X_filtered = self.downsample(X_filtered) # TODO: bug
         return X_filtered
     
     def get_representation(self, X: Tensor) -> Tensor:
@@ -234,4 +251,12 @@ class AudioVqVae(nn.Module):
         for speech classification task based on heuristics.
         """
         zcs = self.utils.get_embedding_color_v2(self.embedding_filters)
-        return rearrange(zcs > 0, 'c -> 1 c 1')
+        mask = zcs > 0
+        return mask
+    
+    def generate_embedding_mask_v2(self) -> Tensor:
+        emb_fft_db = nl_relu(torch.fft.rfft(self.embedding_filters).real**2)
+        fft_score = torch.where(emb_fft_db<=0.5, 1, 0).sum(dim=-1)
+        zcs = self.utils.get_embedding_color_v2(self.embedding_filters)
+        mask = torch.logical_and(zcs > 0, fft_score > 100)
+        return mask

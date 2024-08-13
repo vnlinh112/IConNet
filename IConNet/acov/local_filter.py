@@ -101,15 +101,15 @@ class LocalPatterns(nn.Module):
                     'zero_crossing', 
         'envelope']='envelope'
     ):
+        length = X.shape[-1]
+        end = length - 2*kernel_size - 1
         if sample_mode=='envelope':
             positions = LocalPatterns.sample_using_envelope(
                 X, n_positions, kernel_size)
         elif sample_mode=='zero_crossing':
             positions = LocalPatterns.sample_using_zero_crossing(
-                X, n_positions, kernel_size)
+                X, n_positions, kernel_size, end=end)
         else: # fixed
-            length = X.shape[-1]
-            end = length - 2*kernel_size - 1
             positions = repeat(
                 torch.linspace(
                     start=0, 
@@ -194,6 +194,8 @@ class LocalPatternFilter(nn.Module):
     def _extract_filters(
         self, X: Tensor, filters_idx: Tensor) -> Tensor:
         filters = []
+        if filters_idx.ndim == 3:
+            filters_idx = repeat(filters_idx, 'b h n -> b c h n', c = X.shape[1])
         b, c, h, n = filters_idx.shape
         for i in range(b):
             filter = [X[i].index_select(

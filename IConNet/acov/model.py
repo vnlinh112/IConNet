@@ -1,16 +1,13 @@
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, Callable
 import torch 
 from torch import nn, Tensor
 from torch.nn import functional as F
 from .audio_vqvae import AudioVqVae, VqVaeLoss, VqVaeClsLoss
 from einops import reduce, rearrange, repeat
 from ..nn.classifier import FeedForward, FeedForwardAddNorm
-# from ..nn.mamba_model import MambaSeq2OneBlocks
-from .audio_vqmix import AudioVQEncoder, AudioVQMixClsLoss, VqClsLoss
+from .audio_vqmix import AudioVQEncoder, VqClsLoss
 from .audio_augmentor import AudioAugmentor
-from ..nn.activation import gumbel_softmax, nl_relu
-from .loss import AudioMutualInfo
-# from ..nn.mamba import MambaBlock
+from ..nn.activation import nl_relu
 from .scb_win_conv import SCBWinConv
 from ..nn.sequential import Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks
 from ..nn.activation import NLReLU
@@ -142,6 +139,80 @@ class SCB(nn.Module):
         logits, _ = self.classify(X)
         return logits
 
+class SCB7(SCB):
+    def __init__(
+        self,
+        in_channels: int, 
+        out_channels: int,         
+        num_embeddings: int, 
+        embedding_dim: int, 
+        commitment_cost: float,
+        num_classes: int, 
+        num_tokens_per_second: int=8, # recommended: 4, 8 or 16
+        downsampling: int=8, # recommended: 5 or 8
+        num_tokens: int=256,
+        cls_dim: int=500,
+        sample_rate: int=16000,
+        sample_mode: Literal['fixed', 
+                            'zero_crossing', 
+                            'envelope']='zero_crossing',
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        loss_type: Literal['overlap', 'minami', 
+                            'maxami', 'mami',
+                            'signal_loss']='signal_loss',
+        codebook_pretrained_path: Optional[str]=None,
+        freeze_codebook: bool=False
+    ):
+        super().__init__(
+            in_channels=in_channels,
+            num_embeddings=num_embeddings,
+            embedding_dim=embedding_dim,
+            cls_dim=cls_dim,
+            num_classes=num_classes,
+            sample_rate=sample_rate,
+            downsampling=downsampling,
+            sample_mode=sample_mode,
+            distance_type=distance_type,
+            commitment_cost=commitment_cost
+        )
+        self.num_tokens = num_tokens
+        self.out_channel = out_channels
+        self.encoder = AudioVqVae(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            num_embeddings=num_embeddings, 
+            embedding_dim=embedding_dim, 
+            commitment_cost=commitment_cost,
+            sample_rate=sample_rate,
+            num_tokens_per_second=num_tokens_per_second,
+            downsampling = downsampling,
+            sample_mode=sample_mode,
+            distance_type=distance_type,
+            projector_mask=True,
+            loss_type=loss_type,
+            codebook_pretrained_path=codebook_pretrained_path,
+            freeze_codebook=freeze_codebook
+        )  
+        self.ffn = nn.Sequential(
+            nn.LayerNorm(self.num_embeddings),
+            FeedForward(self.num_embeddings)
+        )
+        self.cls_head = nn.Linear(
+            self.num_embeddings, num_classes)
+        self.pad_layer = PadForConv(
+                    kernel_size=self.num_tokens,
+                    pad_mode='mean')
+
+    def classify(self, X):
+        X = self.encoder.project(X)
+        X = reduce(self.pad_layer(X), 
+                'b h (l t) ->  b l h', 'max', l=self.num_tokens)
+        latent = reduce(self.ffn(X),
+                     'b l h -> b h', 'mean')
+        logits = self.cls_head(latent)
+        return logits, latent
+
+
 class SCB8(SCB):
     def __init__(
         self,
@@ -197,7 +268,7 @@ class SCB8(SCB):
             nn.Linear(self.cls_dim, num_classes)
         )
         
-        self.total_downsampling = self.downsampling * self.vqvae.stride
+        self.total_downsampling = self.downsampling * self.encoder.stride
     
     def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
         latent = self.encoder.project(X)
@@ -206,83 +277,6 @@ class SCB8(SCB):
                      'b l h -> b h', 'mean')
         logits = self.classifier(Z)
         return logits, latent
-
-
-class SCB10(SCB):
-    def __init__(
-        self,
-        in_channels: int,
-        num_classes: int,
-        num_embeddings: int, 
-        embedding_dim: int, 
-        kernel_size: int=1023,
-        stride: int=128,
-        max_num_tokens: int=2048, 
-        cls_dim: int=500,
-        sample_rate: int=16000,
-        commitment_cost: float=0.25,
-        distance_type: Literal['euclidean', 'dot']='euclidean'
-    ):
-        super().__init__(
-            in_channels=in_channels,
-            num_embeddings=num_embeddings,
-            embedding_dim=embedding_dim,
-            cls_dim=cls_dim,
-            num_classes=num_classes,
-            sample_rate=sample_rate,
-            distance_type=distance_type,
-            kernel_size=kernel_size,
-            stride=stride,
-            commitment_cost=commitment_cost
-        )
-
-        self.encoder = AudioVQEncoder(
-            in_channels=in_channels,
-            num_embeddings=num_embeddings, 
-            embedding_dim=embedding_dim, 
-            kernel_size=kernel_size,
-            stride=stride,
-            max_num_tokens=max_num_tokens,
-            commitment_cost=commitment_cost,
-            distance_type=distance_type
-        )  
-
-        self.seq_encoder = MambaSeq2OneBlocks(
-            n_block=2, 
-            n_input_channel=embedding_dim, 
-            n_output_channel=embedding_dim,
-            pooling='mean',
-            kernel_size=4, # only 2 or 4
-            state_expansion_factor=2,
-            block_expansion_factor=2,
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Linear(self.embedding_dim, self.cls_dim),
-            nn.LayerNorm(self.cls_dim),
-            FeedForward(self.cls_dim),
-            nn.Linear(self.cls_dim, num_classes)
-        )
-
-    def train_embedding_cls(
-            self, X: Tensor, Y: Optional[Tensor]=None
-        ) -> tuple[Tensor, AudioVQMixClsLoss]:
-        
-        tokens, loss = self.encoder.encode(X)
-        Z = self.seq_encoder(rearrange(tokens, 'b n c -> b c n'))
-        logits = self.classifier(Z)
-
-        if Y is not None:
-            loss_cls = F.cross_entropy(logits.squeeze(), Y)
-            loss = loss._replace(loss_cls=loss_cls)
-        return logits, loss
-    
-    def train_ssl(self, X: Tensor):
-        pass
-    
-    def forward(self, X: Tensor) -> Tensor:
-        logits, _ = self.train_embedding_cls(X)
-        return logits
     
 
 class SCB11(SCB):
@@ -414,12 +408,6 @@ class SCB12(SCB):
         self.linear_projector = nn.Linear(
             embedding_dim, cls_dim, bias=False)
         self.num_mamba_block = num_mamba_block
-        # self.mamba_blocks = nn.Sequential(*[MambaBlock(
-        #     d_model=cls_dim, 
-        #     d_conv=4, 
-        #     d_state=2, 
-        #     expand=4
-        # ) for _ in range(num_mamba_block)])
         self.ssl_head = nn.Linear(cls_dim, num_embeddings)
 
         self.classifier = nn.Sequential(
@@ -429,7 +417,7 @@ class SCB12(SCB):
             nn.Linear(self.cls_dim, num_classes)
         )
 
-        self.lstm_blocks = nn.LSTM(
+        self.seq_blocks = nn.LSTM(
                 input_size=cls_dim, 
                 hidden_size=cls_dim, 
                 num_layers=num_mamba_block, 
@@ -455,14 +443,14 @@ class SCB12(SCB):
                 path, freeze=freeze)
             self.encoder.embedding.weight.data = self.embedding_filters.detach().clone()
 
-    def lstm_forward(self, X: Tensor) -> Tensor:
-        X, _ = self.lstm_blocks(X)
+    def seq_forward(self, X: Tensor) -> Tensor:
+        X, _ = self.seq_blocks(X)
         return X
 
     def encode(self, X: Tensor) -> Tensor:
         encodings, loss = self.encoder.encode(X)
         latent = self.ssl_head(
-            self.lstm_forward(
+            self.seq_forward(
                 self.linear_projector(encodings)))
         return latent
 
@@ -480,7 +468,7 @@ class SCB12(SCB):
     def train_next_token_prediction(self, X: Tensor, Y: Tensor) -> Tensor:
         X = self.encoder.embedding(X) 
         X = X + self.encoder.generate_positional_encoding(X.shape[1])
-        X_next = self.ssl_head(self.lstm_forward(self.linear_projector(X)))
+        X_next = self.ssl_head(self.seq_forward(self.linear_projector(X)))
         X_next = rearrange(X_next, 'b n h -> (b n) h')
         Y = rearrange(Y, 'b n -> (b n)')
         loss = F.cross_entropy(X_next, Y).mean() 
@@ -653,7 +641,7 @@ class SCB14(SCB):
     
     def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
         X = self.encoder.project(X)
-        X = F.max_pool1d(nl_relu(latent), kernel_size=128, stride=32)
+        X = F.max_pool1d(nl_relu(X), kernel_size=128, stride=32)
         latent = reduce(X, 'b h n -> b h', 'mean')
         logits = self.classifier(X)
         return logits, latent

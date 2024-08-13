@@ -4,10 +4,28 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 from einops import rearrange, reduce, repeat
 from ..conv.pad import PadForConv
+from .zero_crossing import signal_loss
 
 # TODO: LossLogger or LossWrapper
 # to calculate OOD filters z and OOD samples X 
 # for transfer learning case & monitoring. 
+
+
+class SignalLoss(nn.Module):
+    def __init__(self, beta: float=0.1):
+        super().__init__()
+        self.beta = beta 
+    
+    def forward(self, X_filtered: Tensor, X: Tensor):
+        '''
+        Args:
+            X_filtered: (X|z)  B H N , H = num_positions
+            X:          (X)    B C M , C = 1
+        '''
+        X = repeat(X, 'b 1 n -> b h n', h=X_filtered.shape[1])
+        loss = signal_loss(preds=X, target=X_filtered, beta=self.beta)
+        return loss
+
 
 class AudioMutualInfo(nn.Module):
     def __init__(

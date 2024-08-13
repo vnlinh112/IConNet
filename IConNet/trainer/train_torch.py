@@ -23,7 +23,7 @@ from .data_torch import SimpleDataModule as DataModule
 from torch.utils.data import random_split, DataLoader
 from ..utils.config import DatasetConfig
 from ..dataset import DEFAULTS
-from ..acov.model import SCB, SCB10
+from ..acov.model import SCB
 from ..acov.audio_vqvae import VqVaeLoss, VqVaeClsLoss
 from ..acov.audio_vqmix import AudioVQMixClsLoss
 from ..acov.audio_vqmix import AudioVQMixClsLoss
@@ -84,7 +84,7 @@ class Trainer:
         params = [p for p in self.model.parameters() if p.requires_grad==True]
         return params
 
-    def setup(self, model: Union[SCB, SCB10], lr=1e-3):
+    def setup(self, model: SCB, lr=1e-3):
         self.lr = lr
         self.model = model
         
