@@ -164,7 +164,8 @@ class AudioVqVae(nn.Module):
         self.encoder = LocalPatternFilter(
             in_channels=in_channels,
             out_channels=out_channels,
-            sample_mode=sample_mode
+            sample_mode=sample_mode,
+            kernel_size=embedding_dim
         )
         self.vq = VectorQuantizer(
             num_embeddings=num_embeddings, 
