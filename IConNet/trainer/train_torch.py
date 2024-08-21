@@ -76,7 +76,7 @@ class Trainer:
 
         self.val_check_batches = int(self.val_check_interval * self.train_batches)
         self.total_batches = self.train_batches + self.test_batches
-
+        self.steps_per_epoch = self.train_batches // self.accumulate_grad_batches
         self.loss_ratio = loss_ratio
 
     @property
@@ -366,7 +366,9 @@ class Trainer:
             contrastive_learning=False,
             loss_ratio=None,
             lr=None,
-            test_n_epoch: Optional[int]=1):
+            test_n_epoch: Optional[int]=1,
+            optimizer=None, scheduler=None,
+            optimizer_with_regularizer=False):
         
         device = self.device
         has_test_step = not self_supervised
@@ -380,11 +382,20 @@ class Trainer:
             self.lr = lr
         if loss_ratio is not None:
             self.loss_ratio = loss_ratio
-        self.optimizer = optim.RAdam(self.learnable_parameters, lr=self.lr)
-        self.scheduler = optim.lr_scheduler.OneCycleLR(
-            self.optimizer, max_lr=0.1,
-            steps_per_epoch=self.train_batches, 
-            epochs=n_epoch)
+        if optimizer_with_regularizer:
+            self.set_optimizer_with_regularizer(optim_cls=torch.optim.SGD)
+        else:
+            if optimizer is None:
+                self.optimizer = optim.RAdam(self.learnable_parameters, lr=self.lr)
+            else:
+                self.optimizer = optimizer
+            if scheduler is None:
+                self.scheduler = optim.lr_scheduler.OneCycleLR(
+                    self.optimizer, max_lr=0.1,
+                    steps_per_epoch=self.steps_per_epoch, 
+                    epochs=n_epoch)
+            else:
+                self.scheduler = scheduler
         self.model.to(device)
         with tqdm(total=n_epoch) as pbar:
             self.pbar = pbar
@@ -404,12 +415,13 @@ class Trainer:
 
                 if is_test_epoch:
                     metrics, metrics_details, confusion_matrix = self.test_step()
-                    pprint(metrics.compute())
-                    pprint(metrics_details.compute())
-                    pprint(confusion_matrix.compute())
-                    self.save()
-                
+                    pprint(metrics.cpu().compute())
+                    pprint(metrics_details.cpu().compute())
+                    pprint(confusion_matrix.cpu().compute())
+                    self.save()        
+
         self.model.to('cpu')       
+
 
     def save(self, checkpoint_path=None):
         if not checkpoint_path:
@@ -430,6 +442,47 @@ class Trainer:
         else:
             print('No best model found!')
 
+    def set_optimizer_with_regularizer(self, optim_cls=torch.optim.SGD):    
+        lr = self.lr
+        weight_decay = max(lr/10, 1e-6)
+        max_lr = min(lr*100, 0.1)
+        steps_per_epoch = self.steps_per_epoch
+        step_size_up = min(steps_per_epoch, 2000)
+        decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in self.model.named_parameters() if n in decay_parameters],
+                "weight_decay": weight_decay,
+            },
+            {
+                "params": [p for n, p in self.model.named_parameters() if n not in decay_parameters],
+                "weight_decay": 0.0,
+            },
+        ] 
+        self.optimizer = optim_cls(
+            optimizer_grouped_parameters, lr=lr, weight_decay=weight_decay)       
+        self.scheduler = torch.optim.lr_scheduler.CyclicLR(
+            self.optimizer, 
+            base_lr=lr, 
+            max_lr=max_lr, 
+            step_size_up=step_size_up,
+            mode="triangular2")
+
+def get_parameter_names(model, forbidden_layer_types):
+    """
+    Returns the names of the model parameters that are not inside a forbidden layer.
+    """
+    result = []
+    for name, child in model.named_children():
+        result += [
+            f"{name}.{n}"
+            for n in get_parameter_names(child, forbidden_layer_types)
+            if not isinstance(child, tuple(forbidden_layer_types))
+        ]
+    # Add model specific parameters (defined with nn.Parameter) since they are not in any child.
+    result += list(model._parameters.keys())
+    return result
 
 class Trainer_SCB10(Trainer):
     def __init__(
