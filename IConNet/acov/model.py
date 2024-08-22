@@ -805,3 +805,75 @@ class SCB16(SCB):
                 loss_recon=self.zero_loss, loss_cls=self.zero_loss)
         vq_loss = self.encoder.train_embedding_ssl(X)
         return VqVaeClsLoss(*vq_loss, loss_cls=self.zero_loss)
+    
+
+class SCB17(SCB16):
+    def __init__(
+        self,
+        in_channels: int, 
+        out_channels: int,         
+        num_embeddings: int, 
+        embedding_dim: int, 
+        commitment_cost: float,
+        num_classes: int, 
+        num_tokens_per_second: int=8, # recommended: 4, 8 or 16
+        downsampling: int=8, # recommended: 5 or 8
+        num_tokens: int=256,
+        cls_dim: int=500,
+        sample_rate: int=16000,
+        sample_mode: Literal['fixed', 
+                            'zero_crossing', 
+                            'envelope']='zero_crossing',
+        distance_type: Literal['euclidean', 'dot']='euclidean',
+        loss_type: Literal['overlap', 'minami', 
+                            'maxami', 'mami',
+                            'signal_loss']='signal_loss',
+        codebook_pretrained_path: Optional[str]=None,
+        freeze_codebook: bool=False,
+        iconnet_config = None,
+    ):
+        super().__init__(
+            in_channels=in_channels,
+            num_embeddings=num_embeddings,
+            embedding_dim=embedding_dim,
+            cls_dim=cls_dim,
+            num_classes=num_classes,
+            sample_rate=sample_rate,
+            downsampling=downsampling,
+            sample_mode=sample_mode,
+            distance_type=distance_type,
+            commitment_cost=commitment_cost,
+            num_tokens=num_tokens,
+            num_tokens_per_second=num_tokens_per_second,
+            out_channels=out_channels,
+            codebook_pretrained_path=codebook_pretrained_path,
+            freeze_codebook=freeze_codebook,
+            iconnet_config=iconnet_config
+        )
+
+        self.encoder = AudioVqVae(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            num_embeddings=num_embeddings, 
+            embedding_dim=embedding_dim, 
+            commitment_cost=commitment_cost,
+            sample_rate=sample_rate,
+            num_tokens_per_second=num_tokens_per_second,
+            downsampling = downsampling,
+            sample_mode=sample_mode,
+            distance_type=distance_type,
+            projector_mask=True,
+            loss_type=loss_type,
+            codebook_pretrained_path=codebook_pretrained_path,
+            freeze_codebook=freeze_codebook
+        )  
+
+        self.classifier = ModelWrapper(
+            iconnet_config.name).init_model(
+                iconnet_config, n_input=out_channels, n_output=num_classes)
+    
+    def classify(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        X = self.encoder(X) # TODO: downsample, add X
+        latent = reduce(X, 'b h n -> b h', 'mean')
+        logits = self.classifier(X)
+        return logits, latent
