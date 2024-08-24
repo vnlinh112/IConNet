@@ -5,8 +5,8 @@
 #SBATCH --mem=32000
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:3g.40gb:1
-#SBATCH --partition=gpu.large
+#SBATCH --gres=gpu:7g.80gb:1
+#SBATCH --partition=gpu
 
 module add cuda/cudnn/8.4.1 python/3.10.5
 module load anaconda

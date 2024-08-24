@@ -2,7 +2,7 @@ from typing import Literal, Optional, Union, Callable, Iterable
 import torch
 from torch import Tensor, nn
 from einops import rearrange, reduce
-from ..firconv import FirConvLayer
+from ..firconv.firconv import FirConvLayer
 from ..conv import ResidualConv1d, LongConv1d
 
 class FeBlocks(nn.Module):

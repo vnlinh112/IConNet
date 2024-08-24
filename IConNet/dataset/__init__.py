@@ -5,3 +5,5 @@ from .waveform import (
     SplittedWaveformDataset) 
 
 from .dataset_wrapper import DatasetWrapper
+
+from .dataset import DEFAULTS

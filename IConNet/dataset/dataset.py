@@ -5,11 +5,24 @@ import os
 from einops import rearrange
 from ..utils.config import DatasetConfig, get_valid_path
 
+DEFAULTS = {
+    "sample_rate": 16000,
+    "sample_rate_heart": 2000,
+    "max_feature_size": 1e6,
+    "max_feature_size_heart": 1e5,
+    "data_dir": "data/",
+    "labels": ["ang", "neu", "sad", "hap"],
+    "labels_heart": ["murmur", "normal"],
+    "random_state": 42,
+    "test_size": 0.2,
+    "pickle_file_ext": "npy",
+}
+
 class PickleDataset:
     def __init__(
             self, config: DatasetConfig, 
-            data_dir: str = "data/",
-            pickle_file_ext: str = "npy"):
+            data_dir: str=DEFAULTS['data_dir'],
+            pickle_file_ext: str=DEFAULTS['pickle_file_ext']):
         self.config = config
         self.name = self.config.name
         self.classnames = list(np.array(self.config.classnames).flatten())

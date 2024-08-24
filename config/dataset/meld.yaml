@@ -1,0 +1,11 @@
+name: meld
+dataset_class: WaveformDataset
+root: meld/
+audio_dir: full_release/
+feature_dir: preprocessing/
+label_name: label_emotion_key
+feature_name: audio16k
+num_classes: 4
+label_values: [neu, hap, sad, ang]
+classnames: [neu, hap, sad, ang]
+target_labels: [ang, neu, sad, hap]

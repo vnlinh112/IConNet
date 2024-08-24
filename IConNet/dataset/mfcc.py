@@ -5,16 +5,17 @@ from .waveform import WaveformDataset
 from einops import rearrange
 import torchaudio
 
+from .dataset import DEFAULTS
+
 class MFCCDataset(WaveformDataset):
     """Not recommended. Use WaveformDataset and an MFCC model instead."""
     def __init__(
             self, config, 
             feature_name: str,
-            data_dir: str = "data/",
-            max_feature_size: Optional[int]=1e5,
-            labels: Optional[Iterable[str]] = 
-                ['ang', 'neu', 'sad', 'hap'],
-            sample_rate=16000):
+            data_dir: str=DEFAULTS['data_dir'],
+            max_feature_size: Optional[int]=DEFAULTS['max_feature_size_heart'],
+            labels: Optional[Iterable[str]]=DEFAULTS['labels'],
+            sample_rate: int=DEFAULTS['sample_rate']):
         super().__init__(
             config, 
             feature_name, 
@@ -26,7 +27,7 @@ class MFCCDataset(WaveformDataset):
     @staticmethod
     def collate_fn(batch):
         transform = torchaudio.transforms.MFCC(
-            sample_rate = 16000,
+            sample_rate = DEFAULTS['sample_rate'],
             n_mfcc=40,
             melkwargs={"n_fft": 512, 
                     "hop_length": 128, 

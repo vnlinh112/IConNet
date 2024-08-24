@@ -72,7 +72,7 @@ class MFCCFeatures(nn.Module):
         x = aF.preemphasis(x)
         x = self.mfcc(x)
         delta1 = aF.compute_deltas(x)
-        delta2 = aF.compute_deltas(x)
+        delta2 = aF.compute_deltas(delta1)
         x = torch.concat([x, delta1, delta2], dim=2)
         return x
 

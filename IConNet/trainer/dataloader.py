@@ -94,7 +94,11 @@ class DataModule(L.LightningDataModule):
         """Get maximum divisor for data_size that is less than or equal to batch_size."""
         num_range = np.arange(min(math.sqrt(data_size), batch_size))[1:][::-1]
         divisors = [i for i in num_range if data_size % i==0]
-        return int(divisors[0])
+        if len(divisors) > 0:
+            batch_size = int(divisors[0])
+        else:
+            batch_size = 1
+        return batch_size
 
     def train_dataloader(self):
         return DataLoader(

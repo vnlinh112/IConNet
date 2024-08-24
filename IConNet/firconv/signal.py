@@ -45,7 +45,7 @@ def absolute_normalization(arr):
 
 def magnitude_to_db(x, eps=1e-10):
     if type(x) == Tensor:
-        return 20 * torch.log10(torch.maximum(x, eps))
+        return 20 * torch.log10(torch.maximum(x, torch.tensor(eps)))
     return 20 * np.log10(np.maximum(x, eps))
 
 def to_mel(hz):
