@@ -600,9 +600,9 @@ class Trainer_custom_model(Trainer_SCB10):
                 is_test_epoch = (test_n_epoch is not None and test_n_epoch > 0 and epoch % test_n_epoch == 0)   
                 if is_test_epoch:
                     metrics, metrics_details, confusion_matrix = self.test_step()
-                    pprint(metrics.compute())
-                    pprint(metrics_details.compute())
-                    pprint(confusion_matrix.compute())           
+                    pprint(metrics.cpu().compute())
+                    pprint(metrics_details.cpu().compute())
+                    pprint(confusion_matrix.cpu().compute())           
         self.model.to('cpu')  
 
 
