@@ -1,0 +1,21 @@
+name: M11
+description: 2-layer FirConv with LSTM for text emotion classification
+fe:
+  n_block: 2
+  n_channel: [128, 128]
+  kernel_size: [511, 127]
+  stride: [4, 8]
+  window_k: [2, 9]
+  residual_connection_type: channel_concat
+  pooling: mean
+  mel_resolution: 1
+  filter_type: firwin
+  conv_mode: strided_conv
+  norm_type: LocalResponseNorm
+seq:
+  n_block: 2
+  n_channel: 64
+  bidirectional: False
+cls:
+  n_block: 2 
+  n_hidden_dim: [512, 512]
