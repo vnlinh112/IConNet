@@ -4,6 +4,7 @@ from einops import rearrange, reduce
 import numpy as np
 from .complex_fftconv import fft_conv_complex as fft_conv
 from ..firconv.signal import firwin
+import math
 
 def downsample_by_n(x, filter, n, band_offset=0, band_cutoff=1) -> Tensor:
     p = n - x.shape[-1] % n

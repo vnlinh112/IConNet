@@ -4,13 +4,13 @@ from torch import Tensor, nn
 class CustomNormLayer(nn.Module):
     def __init__(
             self, 
-            name: Literal[
+            name: Optional[Literal[
                 'BatchNorm',
                 'LayerNorm',
                 'InstanceNorm',
                 'GroupNorm',
                 'LocalResponseNorm'
-            ],
+            ]],
             num_channels: int,
             n_local_size: int=2,
             num_groups: int=2):
@@ -41,9 +41,8 @@ class CustomNormLayer(nn.Module):
                     num_groups=1, 
                     num_channels=num_channels)
             else:
-                self.layer = None
+                self.layer = nn.Identity()
     
     def forward(self, x: Tensor):
-        if self.layer is not None:
-            x = self.layer(x)
+        x = self.layer(x)
         return x

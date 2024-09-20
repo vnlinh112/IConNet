@@ -2,6 +2,8 @@ from .frontend import FeBlocks
 from .sequential import (
     Seq2SeqBlocks, Seq2OneBlocks, Seq2MBlocks)
 from .classifier import Classifier, FeedForward
+from ..firconv.firconv import FirConvLayer
+from .activation import NLReLU
 from typing import Literal, Optional, Union
 from collections import OrderedDict
 from einops import rearrange, reduce
@@ -10,6 +12,8 @@ from torch.nn import functional as F
 import torchaudio
 from ..utils.config import get_optional_config_value
 import torch
+from IConNet._complex.downsample2 import Downsample2 as ComplexFirconv
+from IConNet._complex.frontend import FeBlocks as ComplexFeBlocks
 
 class M10(nn.Module):
     """
@@ -75,7 +79,7 @@ class M11(nn.Module):
             n_output = config.n_output
         self.n_input = n_input 
         self.n_output = n_output
-        self.fe_blocks = FeBlocks(
+        self.fe_blocks = ComplexFeBlocks(
             n_input_channel = n_input, 
             n_block = config.fe.n_block,
             n_channel = config.fe.n_channel, 
@@ -83,10 +87,11 @@ class M11(nn.Module):
             stride = config.fe.stride, 
             window_k = config.fe.window_k,
             residual_connection_type = config.fe.residual_connection_type,
-            pooling = None) 
-        self.n_feature = self.fe_blocks.n_output_channel
+            pooling = None,
+            is_complex=False) 
+        self.n_feature = config.fe.n_channel[0]
         self.seq_blocks = Seq2SeqBlocks(
-            n_block=1,
+            n_block=2,
             n_input_channel=self.n_feature,
             n_output_channel=64
         )
@@ -886,3 +891,160 @@ class M24(nn.Module):
         x  = self.seq_blocks(x)
         x  = self.cls_head(x)
         return x 
+    
+class M11Text(nn.Module):
+    """
+    A classification model using FIRConv + LSTM
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+
+        residual_type = 'channel_concat'
+        filter_type = 'firwin'
+        conv_mode = 'strided_conv'
+        norm_type = None 
+
+        assert config.fe.n_channel[0] == config.fe.n_channel[1], "Front-end layers should have the same number of channels"
+        self.fe_feature = config.fe.n_channel[0]
+        
+        self.fe1 = FirConvLayer(
+            in_channels = n_input, 
+            out_channels = self.fe_feature, 
+            kernel_size = config.fe.kernel_size[0], 
+            window_k = config.fe.window_k[0],
+            filter_type = filter_type,
+            conv_layer = None,
+            learnable_bands = True,
+            learnable_windows = True,
+            shared_window = False,
+            window_func = None,
+            mel_resolution = 1)
+        self.act1 = NLReLU()
+        
+        self.fe2 = FirConvLayer(
+            in_channels = self.fe_feature, 
+            out_channels = self.fe_feature, 
+            kernel_size = config.fe.kernel_size[1], 
+            window_k = config.fe.window_k[1],
+            filter_type = filter_type,
+            conv_layer = None,
+            learnable_bands = True,
+            learnable_windows = True,
+            shared_window = False,
+            window_func = None,
+            mel_resolution = 1)
+        self.act2 = NLReLU()
+        
+        self.seq_blocks = Seq2SeqBlocks(
+            n_block=config.seq.n_block,
+            n_input_channel=self.fe_feature,
+            n_output_channel=config.seq.n_channel,
+            bidirectional=config.seq.bidirectional
+        )
+
+        self.n_features = self.seq_blocks.n_out_feature
+        self.cls_head = Classifier(
+            n_input = self.n_features,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim
+        )
+
+    def forward(self, x):
+        x = self.act1(self.fe1(x))
+        x = torch.concat([x, self.fe2(x)], dim=-1)
+        x = self.seq_blocks(x)
+        x = self.cls_head(reduce(x, 'b h n -> b h', 'max'))
+        return x 
+    
+    def predict(self, X):
+        logits = self.forward(X)
+        probs = F.softmax(logits, dim=-1)
+        preds = probs.argmax(dim=-1)
+        return preds, probs
+    
+
+class M11Textv3(nn.Module):
+    """
+    A classification model using FIRConv + LSTM
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+
+        residual_type = 'channel_concat'
+        filter_type = 'firwin'
+        conv_mode = 'fftconv'
+        norm_type = None 
+
+        assert config.fe.n_channel[0] == config.fe.n_channel[1], "Front-end layers should have the same number of channels"
+        self.fe_feature = config.fe.n_channel[0]
+
+        self.fe1 = ComplexFirconv(
+            in_channels = n_input, 
+            out_channels = self.fe_feature, 
+            kernel_size = config.fe.kernel_size[0], 
+            window_k = config.fe.window_k[0],
+            conv_mode=conv_mode)
+        self.act1 = NLReLU()
+        
+        self.fe2 = ComplexFirconv(
+            in_channels = self.fe_feature, 
+            out_channels = self.fe_feature, 
+            kernel_size = config.fe.kernel_size[1], 
+            window_k = config.fe.window_k[1],
+            conv_mode=conv_mode)
+        self.act2 = NLReLU()
+        
+        self.seq_blocks = Seq2SeqBlocks(
+            n_block=config.seq.n_block,
+            n_input_channel=self.fe_feature,
+            n_output_channel=config.seq.n_channel,
+            bidirectional=config.seq.bidirectional
+        )
+
+        self.n_features = self.seq_blocks.n_out_feature
+        self.cls_head = Classifier(
+            n_input = self.n_features,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim
+        )
+
+    def forward(self, x):
+        x = self.act1(self.fe1(x))
+        x = torch.concat([x, self.fe2(x)], dim=-1)
+        x = self.seq_blocks(x)
+        x = self.cls_head(reduce(x, 'b h n -> b h', 'max'))
+        return x 
+    
+    def predict(self, X):
+        logits = self.forward(X)
+        probs = F.softmax(logits, dim=-1)
+        preds = probs.argmax(dim=-1)
+        return preds, probs

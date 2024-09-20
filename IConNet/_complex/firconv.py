@@ -1,16 +1,11 @@
-from typing import Literal, Optional, Callable
+from typing import Literal, Optional
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.nn import functional as F
 from einops import rearrange, reduce, repeat
 import numpy as np
-import math
-from .signal import (
-    firwin_mesh, to_mel, to_hz, 
-    get_last_window_time_point, get_nfft, 
-    DEFAULT_SAMPLE_RATE)
+from ..firconv.signal import firwin_mesh, to_mel, to_hz, get_last_window_time_point, DEFAULT_SAMPLE_RATE
 from ..nn.activation import logical_switch
-from functools import partial
 
 class FirConvLayer(nn.Module):
     """Interface for the FIR-kernel-based convolution layer with learnable window function & transition bandwidth.
@@ -22,13 +17,9 @@ class FirConvLayer(nn.Module):
     kernel_size :   Filter length. This does not affect the number of learnable parameters.
     stride :        `int`, also downsampling factor. out_length = ceil(in_length / stride)
 
-    filter_type :    `firwin` (default) or `sinc`.
+    layer_mode :    `firwin` (default) or `sinc`.
         - `firwin`: FIR-filter-based convolution layer using windowing method. [1]
         - `sinc`:   Multi-channel Sinc-based convolution. [2]
-    conv_mode:      `conv` or `fftconv` (defautl).
-        - `conv`:   using conv1d function
-        - `fftconv`: using FFT conv (multiplication in the freq domain) with complex numbers
-    n_fft:          int, default: 2048. Used for `fftconv`. 
 
     learnable_bands: If `True` (default), each kernel will be parametrized by the 
                     `lowcut_band` and `bandwidth` parameters.
@@ -53,50 +44,48 @@ class FirConvLayer(nn.Module):
     def __init__(self, 
             in_channels: int, 
             out_channels: int, 
-            kernel_size: int, 
+            kernel_size:int, 
             stride: int=1, 
-            groups=1,
-            conv_layer: Optional[Callable]=None,
+            layer_mode: Literal['firwin', 'sinc']='firwin',
+
             learnable_bands: bool=True,
             learnable_windows: bool=True,
             shared_window: bool=False,
             window_k: int=2,
-            filter_type: Literal['firwin', 'sinc']='firwin',
-            filter_init: Optional[Literal[
-                'lognorm', 'mel', 'random', 
-                'none']]='mel', 
-            mel_resolution: int=4,
+            filter_init: Optional[Literal['lognorm', 'mel', 
+                                'multi_resolution_mel', 'random', 
+                                'none']]='multi_resolution_mel', 
+            multi_resolution_count: int=4,
             window_func: Optional[Literal['hann', 'hanning', 
                                 'hamming', 'rectangle', 'none']]=None,
-     
+
+            padding=0, dilation=1, 
+            bias=False, groups=1,
             min_low_hz=0, min_band_hz=0, 
+            
             sample_rate=DEFAULT_SAMPLE_RATE,
+            
             dtype=torch.float32, eps=1e-12):
 
         super().__init__()
-        assert in_channels >=1 and out_channels >= 1 
         self.in_channels = in_channels
-        self.out_channels = out_channels
-
-        assert kernel_size >= 1
         # Forcing the filters to be odd (i.e, perfectly symmetrics)
         if kernel_size % 2 == 0: 
-            kernel_size -= 1
-
+            kernel_size += 1
         self.kernel_size = kernel_size
-        self.n_fft = get_nfft(kernel_size)
+        self.out_channels = out_channels
         self.stride = stride
-        self.filter_type = filter_type
-        self.groups = groups
+        self.layer_mode = layer_mode
+        self.padding = padding # should only right pad (0, pad)
+
+        if bias:
+            raise ValueError(f'FIRConv does not support bias.')
+        if groups > 1:
+            raise ValueError(f'FIRConv does not support groups.')
         
-        if conv_layer is None:
-            self.conv_layer = partial(
-                F.conv1d,
-                stride=self.stride, 
-                groups=self.groups
-            )
-        else:
-            self.conv_layer = conv_layer
+        self.bias = bias
+        self.groups = groups
+        self.dilation = dilation
 
         self.dtype = dtype
         self.eps = eps
@@ -108,23 +97,29 @@ class FirConvLayer(nn.Module):
         self.sample_rate = sample_rate
         
         self.filter_init = filter_init
-        self.set_mel_resolution(mel_resolution)
+        if filter_init == 'mel':
+            self.multi_resolution_count = 1
+        else:
+            self.multi_resolution_count = multi_resolution_count
+
         self.window_func = window_func
         self.window_k = window_k
 
         self._init_bands()
         self._init_windows()
 
-        if self.filter_type == 'sinc':
-            self._sinc_init_filters()
+        self._init_mode()
+
+    def _init_mode(self):
+        if self.layer_mode == 'sinc':
+            n = self.kernel_size / 2
+            filter_time = repeat(
+                torch.arange(-n, n), 
+                'k -> c k', 
+                c=self.in_channels) #* self.fs/2
+            self.register_buffer('filter_time', filter_time)
         else: # 'firwin'
-            self._firwin_init_filters()  
-        
-    def set_mel_resolution(
-            self, mel_resolution, 
-            min_mel_bins: int=8):
-        max_mel_resolution = int(math.ceil(self.out_channels/min_mel_bins))
-        self.mel_resolution = min(mel_resolution, max_mel_resolution)
+            self._firwin_init_filters()
 
     def _init_bands(self):
         bands = torch.empty(self.out_channels, self.in_channels)
@@ -134,8 +129,7 @@ class FirConvLayer(nn.Module):
         elif self.filter_init == 'mel' or self.filter_init == 'multi_resolution_mel':
             lowcut_bands, bandwidths = self._mel_init(
                 n_filter = self.out_channels, 
-                n_repeat = self.in_channels,
-                mel_resolution = self.mel_resolution)
+                n_repeat = self.in_channels)
         else:
             lowcut_bands = torch.rand_like(bands)
             bandwidths = torch.rand_like(bands)
@@ -150,10 +144,10 @@ class FirConvLayer(nn.Module):
     def _lognorm_init(self, x: Tensor, mean=.1, std=.4, scale=.25):
         return x.log_normal_(mean=mean, std=std)*scale
 
-    def _mel_init(self, n_filter, n_repeat, mel_resolution):
+    def _mel_init(self, n_filter, n_repeat):
         low_bands, bandwidths = np.array([]), np.array([])
-        _n_filter = n_filter // mel_resolution
-        for i in range(mel_resolution):
+        _n_filter = n_filter // self.multi_resolution_count
+        for i in range(self.multi_resolution_count):
             downsample_factor = 2**i
             start_low_hz = self.min_low_hz / downsample_factor
             delta_hz = self.min_band_hz / downsample_factor
@@ -174,7 +168,6 @@ class FirConvLayer(nn.Module):
             'h -> h c', 
             c=n_repeat).contiguous()
         return low_bands, bandwidths
-
     
     def _init_windows(self):
         if self.learnable_windows:
@@ -224,14 +217,7 @@ class FirConvLayer(nn.Module):
                 torch.cos(self.window_time_mesh)), 
             '... p k -> ... k', 'sum').contiguous()
 
-    def _sinc_init_filters(self):
-        n = self.kernel_size / 2
-        filter_time = repeat(
-            torch.arange(-n, n), 
-            'k -> c k', 
-            c=self.in_channels).contiguous() #* self.sample_rate/2 
-        self.register_buffer('filter_time', filter_time)
-
+    
     def _sinc_generate_filters(self):
         """Generate FIR filters in time domain using the sinc method.
         """
@@ -252,7 +238,7 @@ class FirConvLayer(nn.Module):
             torch.sinc(2 * low_time))
         filters_max = reduce(
             self.filters, 'b c l -> b c ()', 'max')
-        self.filters = self.windows * self.filters #/ filters_max
+        self.filters = self.windows * self.filters / filters_max
     
     
     def _firwin_init_filters(self):
@@ -261,7 +247,7 @@ class FirConvLayer(nn.Module):
         self.register_buffer("shift_freq", shift_freq)
         self.mesh1 = torch.empty_like(self.mesh_freq, requires_grad=True)
         self.mesh2 = torch.empty_like(self.mesh_freq, requires_grad=True)
-        self.filters = torch.rand(
+        self.fir_filters = torch.rand(
             self.out_channels, self.in_channels, self.kernel_size, 
             dtype=self.dtype, requires_grad=True)
     
@@ -282,19 +268,31 @@ class FirConvLayer(nn.Module):
         
         # bring the firwin to time domain & multiply with the window 
         # hcm,hcm,m -> hcm
-        self.filters = torch.fft.irfft(
-            self.mesh1 * self.mesh2 * self.shift_freq,
-            n=self.n_fft)[..., :self.kernel_size]
+        self.fir_filters = torch.fft.irfft(
+            self.mesh1 * self.mesh2 * self.shift_freq, 
+            n=self.kernel_size)
         # (hck,hck -> hck) if shared_window=False, otherwise (hck,k -> hck)
-        self.filters = self.filters * self.windows # self.filters.abs()
-        self.filters = torch.fft.ifftshift(
-            self.filters).type(self.dtype)
+        self.fir_filters = self.fir_filters * self.windows 
+        self.fir_filters = torch.fft.ifftshift(
+            self.fir_filters).type(self.dtype)
 
     def _generate_filter(self):
-        if self.filter_type == 'sinc':
+        if self.layer_mode == 'sinc':
             self._sinc_generate_filters()
         else:
             self._firwin_generate_filters()
+
+    def _apply_filters(self, X):
+        # stride is downsampling factor 
+        # TODO: replace stride with strided conv
+        if self.layer_mode == 'firwin':
+            in_length = X.shape[-1]
+            p = self.stride - in_length % self.stride
+            X = F.pad(X, (0,p)).to(self.device)
+        X = F.conv1d(X, self.fir_filters, 
+                     stride=self.stride, 
+                     dilation=self.dilation)
+        return X
 
     def forward(self, waveforms):
         """
@@ -314,6 +312,5 @@ class FirConvLayer(nn.Module):
             self._generate_learnable_windows()
 
         self._generate_filter()
-        waveforms = self.conv_layer(waveforms, self.filters)
+        waveforms = self._apply_filters(waveforms)
         return waveforms
-

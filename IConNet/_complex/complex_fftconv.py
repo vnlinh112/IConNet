@@ -62,6 +62,44 @@ def fft_conv_complex(
     y   = y.abs() #.type(dtype)
     return y
 
+def fft_conv_complex2(
+        u: Tensor, v: Tensor, stride: int, groups: int=1,
+        band_offset: float=0.0, band_cutoff: float=1.0, 
+        stretch: int=1) -> Tensor:
+    """
+    pad_u = len(v)
+    stride = stride - 1
+
+    TODO: band_offset and band_cutoff for each channel?!
+    """
+    uL  = u.shape[-1]
+    vL  = v.shape[-1]
+    u   = F.pad(u, (0, vL))
+    L   = uL + vL  - 1
+    u_f = torch.fft.fft(u, n=L) # (B H L)
+    v_f = torch.fft.fft(v, n=L) # (C H L)
+   
+    y_f = complex_matmul(u_f, v_f, groups=groups)
+
+    # TODO: polyphase, stride for each channel?!
+    n_fft = y_f.shape[-1]
+    if stride is not None and stride > 1:
+        down_sample_factor = stride
+        p = down_sample_factor - n_fft % down_sample_factor
+        y_f = F.pad(y_f, (0, p))
+        n_fft_offset = max(0, math.ceil(band_offset * n_fft) - 1)
+        n_fft_cutoff = math.ceil(band_cutoff * n_fft)
+        n_fft2 = math.ceil(n_fft/(down_sample_factor-1))
+        n_fft_cut = min(n_fft2 + n_fft_offset, n_fft_cutoff)
+        y_f = y_f[..., n_fft_offset:n_fft_cut]
+        if y_f.shape[-1] < n_fft2:
+            p = n_fft2 - y_f.shape[-1]
+            y_f = F.pad(y_f, (0,p))
+        uL = math.ceil(uL/down_sample_factor) - int(uL%down_sample_factor>0)    
+    
+    y   = torch.fft.ifft(y_f,n=uL*stretch)[..., :int(uL*stretch)] # (B C L)
+    return y.real
+
 
 def complex_matmul(
         a: Tensor, b: Tensor, 

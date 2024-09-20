@@ -16,13 +16,19 @@ class Seq2SeqBlocks(nn.Module):
             self, 
             n_block: int, 
             n_input_channel: int, 
-            n_output_channel: int):
+            n_output_channel: int,
+            bidirectional: bool=False):
         super().__init__()
+        self.n_block = n_block
+        self.n_input_channel = n_input_channel
+        self.n_output_channel = n_output_channel
+        self.n_out_feature = n_output_channel
         self.blocks = nn.LSTM(
                 input_size=n_input_channel, 
                 hidden_size=n_output_channel, 
                 num_layers=n_block, 
-                batch_first=True)
+                batch_first=True,
+                bidirectional=bidirectional)
     
     def forward(self, x):
         x, _ = self.blocks(

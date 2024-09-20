@@ -14,7 +14,8 @@ class FeBlocks(nn.Module):
         * `concat`: concat (requires same channel dimension across blocks)
         * `add`: add (similar to ResNet, requires same shape input)
         * `contract`: contract('bch,buv->buv')
-        * `gated_*`: apply activation before performing add or contract
+        * `channel_concat`: concat hidden layers' output (requires same channel dimension across blocks)
+        * `pool_concat`: apply pooling then concat
         * None, or `none`: return the last input
     """
     def __init__(self, 
@@ -27,7 +28,8 @@ class FeBlocks(nn.Module):
             residual_connection_type: 
                 Optional[Literal[
                 'stack', 'concat', 'add', 
-                'contract']]='concat',
+                'contract', 
+                'channel_concat', 'global_concat']]='concat',
             filter_type: Literal['firwin', 'sinc']='firwin',
             learnable_bands: bool=True,
             learnable_windows: bool=True,
@@ -184,7 +186,7 @@ class FrontEndBlock(nn.Module):
                 conv_mode = self.conv_mode,
                 norm_type = self.norm_type,
             )
-        else:
+        elif self.conv_mode == 'fftconv':
             conv = ResidualConv1d(
             in_channels = in_channels, 
             out_channels = out_channels, 
