@@ -77,8 +77,8 @@ class FeBlocks(nn.Module):
         if is_complex: # firwin fftconv
             Layer = ComplexFirconv
         else:
-            Layer = partial(Firconv2, layer_mode=self.filter_type)
-            # Layer = partial(FirConvLayer, filter_type=self.filter_type)
+            # Layer = partial(Firconv2, layer_mode=self.filter_type)
+            Layer = partial(FirConvLayer, filter_type=self.filter_type)
         
         blocks = [nn.Sequential(OrderedDict({
                 "layer": Layer(

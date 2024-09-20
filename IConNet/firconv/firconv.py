@@ -283,8 +283,8 @@ class FirConvLayer(nn.Module):
         # bring the firwin to time domain & multiply with the window 
         # hcm,hcm,m -> hcm
         self.filters = torch.fft.irfft(
-            self.mesh1 * self.mesh2 * self.shift_freq,
-            n=self.n_fft)[..., :self.kernel_size]
+            self.mesh1 * self.mesh2 * self.shift_freq, n=self.kernel_size)
+            # n=self.n_fft)[..., :self.kernel_size]
         # (hck,hck -> hck) if shared_window=False, otherwise (hck,k -> hck)
         self.filters = self.filters * self.windows # self.filters.abs()
         self.filters = torch.fft.ifftshift(

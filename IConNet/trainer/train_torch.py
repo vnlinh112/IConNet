@@ -540,10 +540,14 @@ class Trainer_custom_model(Trainer_SCB10):
             eval_ratio: float=0.2,
             gradient_clip_val: float=0,
             accumulate_grad_batches: int=1,
+            labels: Optional[Iterable] = None
     ):
         super().__init__(
             batch_size, log_dir, experiment_prefix, device,
             eval_ratio, gradient_clip_val, accumulate_grad_batches)
+        if labels is not None:
+            self.labels = labels
+            self.num_classes = len(self.labels)
 
     def setup(self, model, lr=1e-3):
         super().setup(model=None, lr=lr)
