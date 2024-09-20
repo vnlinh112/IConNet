@@ -4,7 +4,8 @@ from ..nn.model import (
     M18, #M18sinc, 
     M18mfcc,
     M19,
-    M20, M21, M22)
+    M20, M21, M22,
+    M11)
 from ..nn.crnn import CRNN, MFCC_CRNN
 from ..visualizer import display_module
 
@@ -22,7 +23,8 @@ MODEL_PICKER = {
             'MFCC_CRNN': MFCC_CRNN,
             'M20':      M20,
             'M21':      M21,
-            'M22':      M22
+            'M22':      M22,
+            'M11':      M11,
         }
 
 class ModelWrapper:

@@ -1,0 +1,1 @@
+python train.py 'model=m11ser' '++exp.tags=[fe2,firwin,lstm,concat]' 'dataset=iemocap4' 'train=torch_12g' 
