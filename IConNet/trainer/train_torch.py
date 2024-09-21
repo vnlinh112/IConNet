@@ -368,7 +368,8 @@ class Trainer:
             lr=None,
             test_n_epoch: Optional[int]=1,
             optimizer=None, scheduler=None,
-            optimizer_with_regularizer=False):
+            optimizer_with_regularizer=False,
+            max_lr=0.1):
         
         device = self.device
         has_test_step = not self_supervised
@@ -391,7 +392,7 @@ class Trainer:
                 self.optimizer = optimizer
             if scheduler is None:
                 self.scheduler = optim.lr_scheduler.OneCycleLR(
-                    self.optimizer, max_lr=0.1,
+                    self.optimizer, max_lr=max_lr,
                     steps_per_epoch=self.steps_per_epoch, 
                     epochs=n_epoch)
             else:
