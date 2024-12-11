@@ -206,7 +206,7 @@ class SplittedWaveformDataset(WaveformDataset):
         else:
             dim0 = np.unique([d.shape[0] for d in self.x_train[:10]])
             dim1 = np.unique([d.shape[1] for d in self.x_train[:10]])
-            assert min(dim0, dim1) == 1, "data_x must have the same number of channels"
+            assert min(len(dim0), len(dim1)) == 1, "data_x must have the same number of channels"
             if len(dim0) > 1: # [(seq_length, num_channels)]
                 self.x_train = [item.t() for item in self.x_train]    
                 self.x_test = [item.t() for item in self.x_test]    

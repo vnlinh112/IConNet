@@ -1,5 +1,5 @@
 name: M11
-description: 2-layer FirConv with LSTM for text emotion classification
+description: 2-layer FirConv with LSTM for text emotion classification with dropout
 fe:
   n_block: 2
   n_channel: [128, 128]
@@ -19,4 +19,5 @@ seq:
   bidirectional: False
 cls:
   n_block: 2 
-  n_hidden_dim: [256, 256]
+  n_hidden_dim: [1024, 1024]
+  dropout: 0.2

@@ -54,7 +54,7 @@ class FeBlocks(nn.Module):
             pooling: Optional[Literal[
                 'max', 'mean',
                 'sum', 'min']]=None,
-            is_complex: bool=True
+            complex_type: Optional[Literal['complex', 'v1', 'v2']]='v2'
         ):
         super().__init__()
 
@@ -69,16 +69,18 @@ class FeBlocks(nn.Module):
         self.filter_type = filter_type
         self.norm_layer_name = norm_layer_name
         self.pooling = pooling
-        self.blocks = self._create_blocks(is_complex=is_complex)
+        self.complex_type = complex_type
+        self.blocks = self._create_blocks()
         self._set_output_channel()
         self.act = NLReLU()
 
-    def _create_blocks(self, is_complex=True):
-        if is_complex: # firwin fftconv
+    def _create_blocks(self):
+        if self.complex_type == 'complex': # firwin fftconv
             Layer = ComplexFirconv
-        else:
-            # Layer = partial(Firconv2, layer_mode=self.filter_type)
+        elif self.complex_type == 'v1':
             Layer = partial(FirConvLayer, filter_type=self.filter_type)
+        else:
+            Layer = partial(Firconv2, layer_mode=self.filter_type)
         
         blocks = [nn.Sequential(OrderedDict({
                 "layer": Layer(

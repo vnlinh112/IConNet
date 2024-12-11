@@ -1,4 +1,5 @@
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 import argparse
 import gc
 import torch
@@ -84,8 +85,9 @@ class Trainer:
         params = [p for p in self.model.parameters() if p.requires_grad==True]
         return params
 
-    def setup(self, model: SCB, lr=1e-3):
+    def setup(self, model: SCB, lr=1e-3, max_lr=0.1):
         self.lr = lr
+        self.max_lr = max_lr
         self.model = model
         
         self.train_losses = []
@@ -368,8 +370,7 @@ class Trainer:
             lr=None,
             test_n_epoch: Optional[int]=1,
             optimizer=None, scheduler=None,
-            optimizer_with_regularizer=False,
-            max_lr=0.1):
+            optimizer_with_regularizer=False):
         
         device = self.device
         has_test_step = not self_supervised
@@ -392,7 +393,7 @@ class Trainer:
                 self.optimizer = optimizer
             if scheduler is None:
                 self.scheduler = optim.lr_scheduler.OneCycleLR(
-                    self.optimizer, max_lr=max_lr,
+                    self.optimizer, max_lr=self.max_lr,
                     steps_per_epoch=self.steps_per_epoch, 
                     epochs=n_epoch)
             else:
@@ -446,7 +447,7 @@ class Trainer:
     def set_optimizer_with_regularizer(self, optim_cls=torch.optim.SGD):    
         lr = self.lr
         weight_decay = max(lr/10, 1e-6)
-        max_lr = min(lr*100, 0.1)
+        max_lr = min(lr*100, self.max_lr)
         steps_per_epoch = self.steps_per_epoch
         step_size_up = min(steps_per_epoch, 2000)
         decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
@@ -550,8 +551,8 @@ class Trainer_custom_model(Trainer_SCB10):
             self.labels = labels
             self.num_classes = len(self.labels)
 
-    def setup(self, model, lr=1e-3):
-        super().setup(model=None, lr=lr)
+    def setup(self, model, lr=1e-3, max_lr=0.1):
+        super().setup(model=None, lr=lr, max_lr=max_lr)
         self.model = model
         self.train_losses_detail = []
 
@@ -575,7 +576,7 @@ class Trainer_custom_model(Trainer_SCB10):
                 self.current_step += 1
                 loss = loss.item()
                 self.train_losses.append(loss)
-                if batch_idx % self.val_check_batches == 0: 
+                if batch_idx % self.val_check_batches == 0: # TODO: calculate actual backward batch
                     message = self.gen_log_message(
                         batch_idx, loss, loss_detail=None,
                         memory=None
@@ -592,7 +593,7 @@ class Trainer_custom_model(Trainer_SCB10):
             self.lr = lr
         self.optimizer = optim.RAdam(self.learnable_parameters, lr=self.lr)
         self.scheduler = optim.lr_scheduler.OneCycleLR(
-            self.optimizer, max_lr=0.1,
+            self.optimizer, max_lr=self.max_lr,
             steps_per_epoch=self.train_batches, 
             epochs=n_epoch)
         self.model.to(device)
@@ -606,8 +607,8 @@ class Trainer_custom_model(Trainer_SCB10):
                 if is_test_epoch:
                     metrics, metrics_details, confusion_matrix = self.test_step()
                     pprint(metrics.cpu().compute())
-                    pprint(metrics_details.cpu().compute())
-                    pprint(confusion_matrix.cpu().compute())           
+                    # pprint(metrics_details.cpu().compute())
+                    # pprint(confusion_matrix.cpu().compute())           
         self.model.to('cpu')  
 
 

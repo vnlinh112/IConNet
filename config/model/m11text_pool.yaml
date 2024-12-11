@@ -1,5 +1,5 @@
-name: M11
-description: 2-layer FirConv with LSTM for text emotion classification
+name: M11TextPool
+description: 2-layer FirConv with LSTM for text emotion classification with dropout
 fe:
   n_block: 2
   n_channel: [128, 128]
@@ -12,11 +12,8 @@ fe:
   filter_type: firwin
   conv_mode: strided_conv
   norm_type: LocalResponseNorm
-  complex_type: v2
-seq:
-  n_block: 2
-  n_channel: 64
-  bidirectional: False
+  complex_type: v1
 cls:
   n_block: 2 
   n_hidden_dim: [256, 256]
+  dropout: 0.1

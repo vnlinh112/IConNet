@@ -1,0 +1,11 @@
+name: sentiment140
+dataset_class: SplittedWaveformDataset
+root: sentiment140/
+audio_dir: full_release/
+feature_dir: preprocessing/
+label_name: labels_binary
+feature_name: signals_3channels_win5stride1
+num_classes: 2
+label_values: [0, 1]
+classnames: ['negative', 'positive']
+target_labels:  ['negative', 'positive']

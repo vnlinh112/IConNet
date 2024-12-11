@@ -79,6 +79,11 @@ class M11(nn.Module):
             n_output = config.n_output
         self.n_input = n_input 
         self.n_output = n_output
+        complex_type, dropout = None, None
+        if 'complex_type' in config.fe.keys():
+            complex_type = config.fe.complex_type
+        if 'dropout' in config.cls.keys():
+            dropout = config.cls.dropout
         self.fe_blocks = ComplexFeBlocks(
             n_input_channel = n_input, 
             n_block = config.fe.n_block,
@@ -88,7 +93,7 @@ class M11(nn.Module):
             window_k = config.fe.window_k,
             residual_connection_type = config.fe.residual_connection_type,
             pooling = None,
-            is_complex=False) 
+            complex_type = complex_type) 
         self.n_feature = config.fe.n_channel[0]
         self.seq_blocks = Seq2SeqBlocks(
             n_block=2,
@@ -99,13 +104,69 @@ class M11(nn.Module):
             n_input = 64,
             n_output = n_output,
             n_block = config.cls.n_block, 
-            n_hidden_dim = config.cls.n_hidden_dim
+            n_hidden_dim = config.cls.n_hidden_dim,
+            dropout=dropout
         )
 
     def forward(self, x):
         x = self.fe_blocks(x)
         x = self.seq_blocks(x)
         x = self.cls_head(reduce(x, 'b h n -> b h', 'max'))
+        return x 
+    
+    def predict(self, X):
+        logits = self.forward(X)
+        probs = F.softmax(logits, dim=-1)
+        preds = probs.argmax(dim=-1)
+        return preds, probs
+    
+class M11TextPool(nn.Module):
+    """
+    A classification model using FIRConv
+    """
+
+    def __init__(
+            self, 
+            config, 
+            n_input=None, 
+            n_output=None):
+        
+        super().__init__()
+        self.config = config
+        if n_input is None:
+            n_input = config.n_input
+        if n_output is None:
+            n_output = config.n_output
+        self.n_input = n_input 
+        self.n_output = n_output
+        complex_type, dropout = None, None
+        if 'complex_type' in config.fe.keys():
+            complex_type = config.fe.complex_type
+        if 'dropout' in config.cls.keys():
+            dropout = config.cls.dropout
+        self.pooling = config.fe.pooling
+        self.fe_blocks = ComplexFeBlocks(
+            n_input_channel = n_input, 
+            n_block = config.fe.n_block,
+            n_channel = config.fe.n_channel, 
+            kernel_size = config.fe.kernel_size, 
+            stride = config.fe.stride, 
+            window_k = config.fe.window_k,
+            residual_connection_type = config.fe.residual_connection_type,
+            pooling = None,
+            complex_type = complex_type) 
+        self.n_feature = config.fe.n_channel[0]
+        self.cls_head = Classifier(
+            n_input = self.n_feature,
+            n_output = n_output,
+            n_block = config.cls.n_block, 
+            n_hidden_dim = config.cls.n_hidden_dim,
+            dropout=dropout
+        )
+
+    def forward(self, x):
+        x = self.fe_blocks(x)
+        x = self.cls_head(reduce(x, 'b h n -> b h', self.pooling))
         return x 
     
     def predict(self, X):
